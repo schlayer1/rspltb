@@ -11,7 +11,7 @@ export const CANDIDATE_FLASH_MODELS = [
 
 export const decodeDefaultKey = (): string => {
   try {
-    const b64 = 'QVEuQWI4Uk42SUpRQTM1V0ZScTRfLTdsUFAxQVU1Y1l5bkVTN3VmekZjdjlyZktHMjhhV2c=';
+    const b64 = 'QVEuQWI4Uk42S2VKMmFhOEp6NWU2S0hjaTI1NjdTeGlLSmIzenVrQXprbXpuWG1Td2QzdXc=';
     if (typeof atob !== 'undefined') return atob(b64);
     if (typeof Buffer !== 'undefined') return Buffer.from(b64, 'base64').toString('utf8');
   } catch {}
