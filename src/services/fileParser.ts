@@ -141,6 +141,169 @@ export function parseTxtBuffer(arrayBuffer: ArrayBuffer): string {
 }
 
 /**
+ * Recursively extracts files and relative paths from drag & drop items (folders and files).
+ * Handles macOS Safari/Chrome folders seamlessly!
+ */
+export async function getFilesFromDataTransfer(dataTransfer: DataTransfer): Promise<{ file: File; relativePath: string }[]> {
+  const items = dataTransfer.items;
+  const results: { file: File; relativePath: string }[] = [];
+
+  if (!items || items.length === 0) {
+    if (dataTransfer.files) {
+      for (let i = 0; i < dataTransfer.files.length; i++) {
+        const f = dataTransfer.files[i];
+        results.push({ file: f, relativePath: f.webkitRelativePath || f.name });
+      }
+    }
+    return results;
+  }
+
+  const entries: any[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.kind === 'file') {
+      const entry = (item as any).webkitGetAsEntry ? (item as any).webkitGetAsEntry() : null;
+      if (entry) {
+        entries.push(entry);
+      } else {
+        const f = item.getAsFile();
+        if (f) results.push({ file: f, relativePath: f.name });
+      }
+    }
+  }
+
+  for (const entry of entries) {
+    await scanEntry(entry, '', results);
+  }
+
+  return results;
+}
+
+async function scanEntry(entry: any, currentPath: string, results: { file: File; relativePath: string }[]): Promise<void> {
+  if (entry.isFile) {
+    const file: File = await new Promise((res, rej) => entry.file(res, rej));
+    const fullPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+    results.push({ file, relativePath: fullPath });
+  } else if (entry.isDirectory) {
+    const dirReader = entry.createReader();
+    const subEntries: any[] = await new Promise((res, rej) => {
+      const all: any[] = [];
+      function read() {
+        dirReader.readEntries((entries: any[]) => {
+          if (!entries || entries.length === 0) {
+            res(all);
+          } else {
+            all.push(...entries);
+            read(); // readEntries may batch in chunks of 100
+          }
+        }, rej);
+      }
+      read();
+    });
+
+    const nextPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+    for (const sub of subEntries) {
+      await scanEntry(sub, nextPath, results);
+    }
+  }
+}
+
+/**
+ * Parses a list of files with their relative folder paths (from dropped folders or <input webkitdirectory />)
+ */
+export async function parseFolderFileList(
+  fileItems: { file: File; relativePath: string }[],
+  targetTurnus: TurnusId = 'ltb1',
+  onProgress?: (loaded: number, total: number, currentName: string) => void
+): Promise<{ submissions: StudentSubmission[]; hasUncertainTurnus: boolean }> {
+  const submissions: StudentSubmission[] = [];
+  let hasUncertainTurnus = false;
+
+  // Filter valid document files
+  const valid = fileItems.filter(item => {
+    const lower = item.relativePath.toLowerCase();
+    if (lower.includes('__macosx') || lower.includes('.ds_store')) return false;
+    return lower.endsWith('.pdf') || lower.endsWith('.docx') || lower.endsWith('.txt');
+  });
+
+  let counter = 1;
+  for (let i = 0; i < valid.length; i++) {
+    const { file, relativePath } = valid[i];
+    const fileName = relativePath.split('/').pop() || file.name;
+    const lower = fileName.toLowerCase();
+
+    if (onProgress) {
+      onProgress(i + 1, valid.length, fileName);
+    }
+
+    const { detectedTurnus, isConfident } = detectTurnusFromPath(relativePath, targetTurnus);
+    if (!isConfident) {
+      hasUncertainTurnus = true;
+    }
+
+    const moodleId = extractMoodleIdFromPath(relativePath);
+    const studentName = extractStudentNameFromPath(relativePath);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      let rawText = '';
+      let fileType: StudentSubmission['fileType'] = 'other';
+
+      if (lower.endsWith('.pdf')) {
+        fileType = 'pdf';
+        rawText = await parsePdfBuffer(arrayBuffer);
+      } else if (lower.endsWith('.docx')) {
+        fileType = 'docx';
+        rawText = await parseDocxBuffer(arrayBuffer);
+      } else if (lower.endsWith('.txt')) {
+        fileType = 'txt';
+        rawText = parseTxtBuffer(arrayBuffer);
+      }
+
+      const words = rawText.split(/\s+/).filter(w => w.length > 0).length;
+
+      submissions.push({
+        id: `sub_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
+        moodleId,
+        studentName,
+        turnus: detectedTurnus,
+        rawFileName: fileName,
+        folderPath: relativePath,
+        fileType,
+        rawText,
+        wordCount: words,
+        pseudonym: `Studierende/r #${counter}`,
+        status: 'pending',
+        generatedFeedback: '',
+        editedFeedback: '',
+        originalFileBlob: file
+      });
+      counter++;
+    } catch (err: any) {
+      submissions.push({
+        id: `sub_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
+        moodleId,
+        studentName,
+        turnus: detectedTurnus,
+        rawFileName: fileName,
+        folderPath: relativePath,
+        fileType: lower.endsWith('.pdf') ? 'pdf' : lower.endsWith('.docx') ? 'docx' : 'other',
+        rawText: '',
+        wordCount: 0,
+        pseudonym: `Studierende/r #${counter}`,
+        status: 'error',
+        generatedFeedback: '',
+        editedFeedback: '',
+        errorMessage: err.message || 'Fehler beim Lesen der Datei'
+      });
+      counter++;
+    }
+  }
+
+  return { submissions, hasUncertainTurnus };
+}
+
+/**
  * Parse an uploaded ZIP file (typically exported from Moodle)
  */
 export async function parseZipArchive(
@@ -249,82 +412,9 @@ export async function parseDirectFiles(
   targetTurnus: TurnusId = 'ltb1',
   onProgress?: (loaded: number, total: number, currentName: string) => void
 ): Promise<{ submissions: StudentSubmission[]; hasUncertainTurnus: boolean }> {
-  const submissions: StudentSubmission[] = [];
-  let hasUncertainTurnus = false;
-
-  let counter = 1;
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const fileName = file.name;
-    const lower = fileName.toLowerCase();
-
-    if (onProgress) {
-      onProgress(i + 1, files.length, fileName);
-    }
-
-    const { detectedTurnus, isConfident } = detectTurnusFromPath(fileName, targetTurnus);
-    if (!isConfident) {
-      hasUncertainTurnus = true;
-    }
-
-    const moodleId = extractMoodleIdFromPath(fileName);
-    const studentName = extractStudentNameFromPath(fileName);
-
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      let rawText = '';
-      let fileType: StudentSubmission['fileType'] = 'other';
-
-      if (lower.endsWith('.pdf')) {
-        fileType = 'pdf';
-        rawText = await parsePdfBuffer(arrayBuffer);
-      } else if (lower.endsWith('.docx')) {
-        fileType = 'docx';
-        rawText = await parseDocxBuffer(arrayBuffer);
-      } else if (lower.endsWith('.txt')) {
-        fileType = 'txt';
-        rawText = parseTxtBuffer(arrayBuffer);
-      }
-
-      const words = rawText.split(/\s+/).filter(w => w.length > 0).length;
-
-      submissions.push({
-        id: `sub_direct_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
-        moodleId,
-        studentName,
-        turnus: detectedTurnus,
-        rawFileName: fileName,
-        folderPath: fileName,
-        fileType,
-        rawText,
-        wordCount: words,
-        pseudonym: `Studierende/r #${counter}`,
-        status: 'pending',
-        generatedFeedback: '',
-        editedFeedback: '',
-        originalFileBlob: file
-      });
-      counter++;
-    } catch (err: any) {
-      submissions.push({
-        id: `sub_direct_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
-        moodleId,
-        studentName,
-        turnus: detectedTurnus,
-        rawFileName: fileName,
-        folderPath: fileName,
-        fileType: 'other',
-        rawText: '',
-        wordCount: 0,
-        pseudonym: `Studierende/r #${counter}`,
-        status: 'error',
-        generatedFeedback: '',
-        editedFeedback: '',
-        errorMessage: err.message || 'Fehler beim Lesen der Datei'
-      });
-      counter++;
-    }
-  }
-
-  return { submissions, hasUncertainTurnus };
+  const fileItems = files.map(f => ({
+    file: f,
+    relativePath: f.webkitRelativePath || f.name
+  }));
+  return parseFolderFileList(fileItems, targetTurnus, onProgress);
 }

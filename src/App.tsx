@@ -18,7 +18,7 @@ import {
   SeminarDatabase, 
   TurnusId 
 } from './types';
-import { parseZipArchive, parseDirectFiles } from './services/fileParser';
+import { parseZipArchive, parseDirectFiles, parseFolderFileList } from './services/fileParser';
 import { evaluateSubmissionText, checkGeminiApiHealth } from './services/geminiService';
 import { pseudonymizeText, restorePersonalFeedback } from './services/pseudonymService';
 import { 
@@ -82,7 +82,7 @@ export const App: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState('');
   const [uncertainUploadData, setUncertainUploadData] = useState<{
-    files: File[] | FileList;
+    items: { file: File; relativePath: string }[] | FileList | File[];
     detected: TurnusId;
   } | null>(null);
 
@@ -172,37 +172,53 @@ export const App: React.FC = () => {
     localStorage.setItem('rsp_evaluation_settings', JSON.stringify(newSettings));
   };
 
-  // Upload handler with incremental sync
-  const processUploadFiles = async (files: FileList | File[], targetTurnus: TurnusId) => {
+  // Upload handler with incremental sync (supports unpacked folders, ZIPs, and individual documents)
+  const processUploadFiles = async (
+    rawInput: { file: File; relativePath: string }[] | FileList | File[],
+    targetTurnus: TurnusId
+  ) => {
     setIsUploading(true);
     setUploadProgressText('Dateien werden eingelesen...');
 
     try {
-      const fileArray = Array.from(files);
-      const isZip = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.zip');
-
       let parsedSubmissions: StudentSubmission[] = [];
       let hasUncertain = false;
 
-      if (isZip) {
-        setUploadProgressText('Moodle-Sammelarchiv (.zip) wird analysiert...');
-        const res = await parseZipArchive(fileArray[0], targetTurnus, (curr, total, name) => {
-          setUploadProgressText(`Entpacke Datei ${curr} von ${total}: ${name}`);
-        });
-        parsedSubmissions = res.submissions;
-        hasUncertain = res.hasUncertainTurnus;
-      } else {
-        setUploadProgressText('Dateien werden ausgelesen...');
-        const res = await parseDirectFiles(fileArray, targetTurnus, (curr, total, name) => {
+      // Check if input is an array of scanned folder items
+      const isFolderItemList = Array.isArray(rawInput) && rawInput.length > 0 && 'file' in rawInput[0];
+
+      if (isFolderItemList) {
+        setUploadProgressText('Entpackter Ordner wird eingelesen...');
+        const folderItems = rawInput as { file: File; relativePath: string }[];
+        const res = await parseFolderFileList(folderItems, targetTurnus, (curr: number, total: number, name: string) => {
           setUploadProgressText(`Lese Datei ${curr} von ${total}: ${name}`);
         });
         parsedSubmissions = res.submissions;
         hasUncertain = res.hasUncertainTurnus;
+      } else {
+        const fileArray = Array.from(rawInput as FileList | File[]);
+        const isZip = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.zip');
+
+        if (isZip) {
+          setUploadProgressText('Moodle-Sammelarchiv (.zip) wird analysiert...');
+          const res = await parseZipArchive(fileArray[0], targetTurnus, (curr, total, name) => {
+            setUploadProgressText(`Entpacke Datei ${curr} von ${total}: ${name}`);
+          });
+          parsedSubmissions = res.submissions;
+          hasUncertain = res.hasUncertainTurnus;
+        } else {
+          setUploadProgressText('Dokumente werden ausgelesen...');
+          const res = await parseDirectFiles(fileArray, targetTurnus, (curr, total, name) => {
+            setUploadProgressText(`Lese Datei ${curr} von ${total}: ${name}`);
+          });
+          parsedSubmissions = res.submissions;
+          hasUncertain = res.hasUncertainTurnus;
+        }
       }
 
       // If uncertain and user dropped from another tab
-      if (hasUncertain && !uncertainUploadData && fileArray[0].name.toLowerCase().indexOf('ltb') === -1) {
-        setUncertainUploadData({ files, detected: targetTurnus });
+      if (hasUncertain && !uncertainUploadData && parsedSubmissions.length > 0) {
+        setUncertainUploadData({ items: rawInput, detected: targetTurnus });
         setIsUploading(false);
         return;
       }
@@ -231,8 +247,8 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleFilesSelected = (files: FileList | File[]) => {
-    processUploadFiles(files, activeTurnus);
+  const handleFilesSelected = (items: { file: File; relativePath: string }[] | FileList | File[]) => {
+    processUploadFiles(items, activeTurnus);
   };
 
   // Demo Samples
@@ -583,7 +599,7 @@ export const App: React.FC = () => {
                 </div>
 
                 <UploadZone
-                  onFilesSelected={handleFilesSelected}
+                  onItemsSelected={handleFilesSelected}
                   isLoading={isUploading}
                   progressText={uploadProgressText}
                 />
@@ -700,7 +716,7 @@ export const App: React.FC = () => {
           isOpen={true}
           detectedTurnus={uncertainUploadData.detected}
           onConfirm={(selectedTurnus) => {
-            processUploadFiles(uncertainUploadData.files, selectedTurnus);
+            processUploadFiles(uncertainUploadData.items, selectedTurnus);
           }}
           onCancel={() => setUncertainUploadData(null)}
         />
