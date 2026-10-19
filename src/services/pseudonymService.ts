@@ -4,16 +4,12 @@
  * und stellt die persönliche Ansprache im fertigen Feedback nahtlos wieder her.
  */
 
+import { parseStudentIdentity, enforceSalutation } from './nameSalutationService';
+
 export function extractFirstName(fullName: string): string {
   if (!fullName) return 'Du';
-  // Moodle formats often: "Nachname, Vorname" or "Vorname Nachname" or "Nachname Vorname"
-  const cleaned = fullName.replace(/_\d+_assignsubmission.*/i, '').trim();
-  if (cleaned.includes(',')) {
-    const parts = cleaned.split(',');
-    return parts[1]?.trim().split(' ')[0] || parts[0]?.trim();
-  }
-  const parts = cleaned.split(' ');
-  return parts[0]?.trim() || 'Du';
+  const identity = parseStudentIdentity(fullName);
+  return identity.firstName;
 }
 
 export function pseudonymizeText(
@@ -56,29 +52,19 @@ export function pseudonymizeText(
 export function restorePersonalFeedback(
   generatedFeedback: string,
   studentName: string,
-  pseudonymLabel: string
+  pseudonymLabel: string,
+  signOff: string = 'Viele Grüße sendet Dir Tim',
+  overrideGender?: 'male' | 'female'
 ): string {
   let restored = generatedFeedback;
-  const firstName = extractFirstName(studentName);
+  const identity = parseStudentIdentity(studentName, overrideGender);
 
   // Replace pseudonym placeholders
   const placeholderRegex = new RegExp(`\\b${escapeRegExp(pseudonymLabel)}\\b`, 'gi');
-  restored = restored.replace(placeholderRegex, firstName);
+  restored = restored.replace(placeholderRegex, identity.firstName);
 
-  // If the feedback starts without personal greeting or with a generic one
-  const genericGreetings = [
-    /^(Liebe\/r\s+Studierende\/r|Liebe\/r\s+Student\/in|Hallo\s+Studierende\/r|Liebe Studierende,)/i,
-    /^(Hallo\s+Student\/in|Hallo\s+du|Liebe\/r\s+Kommilitone\/in)/i
-  ];
-
-  for (const pattern of genericGreetings) {
-    if (pattern.test(restored)) {
-      restored = restored.replace(pattern, `Liebe/r ${firstName},`);
-    }
-  }
-
-  // Ensure standard formatting
-  return restored.trim();
+  // Strictly enforce grammatically correct first-name salutation and signoff
+  return enforceSalutation(restored, studentName, signOff, overrideGender);
 }
 
 function escapeRegExp(string: string) {

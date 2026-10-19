@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { StudentSubmission, EvaluationSettings } from '../types';
 import { DIVERSITY_ANGLES, ANTI_AI_BLACKLIST } from '../services/geminiService';
+import { parseStudentIdentity } from '../services/nameSalutationService';
 
 interface SplitScreenWorkspaceProps {
   submission: StudentSubmission;
@@ -24,6 +25,7 @@ interface SplitScreenWorkspaceProps {
   onUpdateFeedback: (id: string, newFeedback: string) => void;
   onApprove: (id: string) => void;
   onRegenerate: (id: string, angleIndex: number) => void;
+  onUpdateGender?: (studentId: string, gender: 'male' | 'female') => void;
   onNavigate: (direction: 'prev' | 'next') => void;
   hasPrev: boolean;
   hasNext: boolean;
@@ -38,6 +40,7 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
   onUpdateFeedback,
   onApprove,
   onRegenerate,
+  onUpdateGender,
   onNavigate,
   hasPrev,
   hasNext,
@@ -48,6 +51,21 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
   const [copied, setCopied] = useState(false);
   const [selectedAngle, setSelectedAngle] = useState(submission.angleIndex ?? 0);
   const [showAngleMenu, setShowAngleMenu] = useState(false);
+
+  // Sync selected angle when submission changes
+  useEffect(() => {
+    if (typeof submission.angleIndex === 'number') {
+      setSelectedAngle(submission.angleIndex);
+    } else if (submission.suggestedFocus?.category) {
+      const matchedIdx = DIVERSITY_ANGLES.findIndex(a => 
+        a.name.toLowerCase().includes(submission.suggestedFocus!.category.toLowerCase()) ||
+        submission.suggestedFocus!.category.toLowerCase().includes(a.name.toLowerCase())
+      );
+      if (matchedIdx !== -1) {
+        setSelectedAngle(matchedIdx);
+      }
+    }
+  }, [submission.id, submission.angleIndex, submission.suggestedFocus]);
 
   const currentFeedback = submission.editedFeedback || submission.generatedFeedback || '';
 
@@ -76,6 +94,9 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onUpdateFeedback(submission.id, e.target.value);
   };
+
+  const identity = parseStudentIdentity(submission.studentName, submission.gender);
+  const studentKey = submission.moodleId || submission.studentName.toLowerCase().replace(/\s+/g, '_');
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
@@ -109,15 +130,34 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
           </div>
 
           <div>
-            <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-              {submission.studentName}
-              {submission.status === 'approved' && (
-                <span className="text-xs font-normal bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
-                  Freigegeben
-                </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                {submission.studentName}
+                {submission.status === 'approved' && (
+                  <span className="text-xs font-normal bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Freigegeben
+                  </span>
+                )}
+              </h2>
+
+              {/* Gender Quick-Toggle Badge */}
+              {onUpdateGender && (
+                <button
+                  type="button"
+                  onClick={() => onUpdateGender(studentKey, identity.gender === 'female' ? 'male' : 'female')}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border transition-all ${
+                    identity.gender === 'female'
+                      ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                      : 'bg-blue-50 text-[#002f5d] border-blue-200 hover:bg-blue-100'
+                  }`}
+                  title="Klicken, um Anrede zwischen Lieber (♂) und Liebe (♀) umzuschalten"
+                >
+                  <span>{identity.gender === 'female' ? '♀' : '♂'}</span>
+                  <span>{identity.salutation}</span>
+                </button>
               )}
-            </h2>
-            <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+            </div>
+            <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
               {(submission.matrikelnummer || submission.moodleId) && (
                 <span className="font-mono bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded border border-slate-200">
                   Matr.-Nr.: {submission.matrikelnummer || submission.moodleId}
@@ -245,6 +285,57 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
               )}
             </div>
           </div>
+
+          {/* KI-Abstract & Einstiegs-Fokus-Empfehlung Card */}
+          {(submission.abstract || submission.suggestedFocus) && (
+            <div className="mb-3.5 p-3.5 bg-[#f8f5ee] border border-[#d9ceb2] rounded-xl text-xs space-y-2 shadow-2xs animate-fadeIn">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="font-bold text-[#002f5d] uppercase tracking-wider flex items-center gap-1.5 text-[11px]">
+                  <Sparkles className="w-3.5 h-3.5 text-[#ae9a63]" />
+                  KI-Abstract & didaktische Fokus-Empfehlung
+                </span>
+
+                {submission.suggestedFocus && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="bg-[#002f5d] text-white px-2.5 py-0.5 rounded-md font-semibold text-[11px] shadow-2xs">
+                      Empfohlener Fokus: {submission.suggestedFocus.category}
+                    </span>
+                    {DIVERSITY_ANGLES[selectedAngle]?.name !== submission.suggestedFocus.category && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const matchedIdx = DIVERSITY_ANGLES.findIndex(a => 
+                            a.name.toLowerCase().includes(submission.suggestedFocus!.category.toLowerCase()) ||
+                            submission.suggestedFocus!.category.toLowerCase().includes(a.name.toLowerCase())
+                          );
+                          if (matchedIdx !== -1) {
+                            setSelectedAngle(matchedIdx);
+                          }
+                        }}
+                        className="text-[10px] text-[#002f5d] hover:text-[#001f3f] font-semibold bg-white hover:bg-slate-50 px-2 py-0.5 rounded border border-[#d9ceb2] transition-colors shadow-2xs"
+                        title="Diesen didaktischen Fokus für die Einstiegsperspektive aktivieren"
+                      >
+                        Fokus übernehmen
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {submission.abstract && (
+                <p className="text-slate-800 leading-relaxed italic bg-white/70 p-2.5 rounded-lg border border-[#e8dfc8]">
+                  „{submission.abstract}“
+                </p>
+              )}
+
+              {submission.suggestedFocus?.reason && (
+                <p className="text-[11px] text-slate-700 flex items-center gap-1.5 px-1">
+                  <span className="font-semibold text-[#002f5d]">Didaktische Begründung:</span>
+                  <span>{submission.suggestedFocus.reason}</span>
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Feedback Editor Textarea */}
           <div className="flex-1 flex flex-col relative">

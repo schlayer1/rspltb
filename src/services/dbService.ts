@@ -1,4 +1,5 @@
 import { SeminarDatabase, StudentProfile, StudentSubmission, TurnusId } from '../types';
+import { parseStudentIdentity } from './nameSalutationService';
 
 const DB_NAME = 'RSP_LTB_Database_v1';
 const STORE_NAME = 'seminar_store';
@@ -101,11 +102,14 @@ export function mergeIncrementalSubmissions(
     const studentMatr = sub.matrikelnummer || sub.moodleId;
     const studentKey = studentMatr || sub.studentName.toLowerCase().replace(/\s+/g, '_');
 
+    const detectedGender = parseStudentIdentity(sub.studentName).gender;
+
     let profile: StudentProfile = updatedStudents[studentKey] || {
       id: studentKey,
       matrikelnummer: studentMatr,
       moodleId: studentMatr,
       fullName: sub.studentName,
+      gender: detectedGender,
       submissions: {}
     };
 
@@ -116,6 +120,9 @@ export function mergeIncrementalSubmissions(
     if (sub.studentName) {
       profile.fullName = sub.studentName;
     }
+    if (!profile.gender) {
+      profile.gender = detectedGender;
+    }
 
     const existingSubmission = profile.submissions[subTurnus];
 
@@ -124,20 +131,33 @@ export function mergeIncrementalSubmissions(
       profile.submissions[subTurnus] = {
         ...sub,
         turnus: subTurnus,
+        gender: profile.gender,
         status: existingSubmission.status,
         generatedFeedback: existingSubmission.generatedFeedback,
         editedFeedback: existingSubmission.editedFeedback,
+        abstract: existingSubmission.abstract || sub.abstract,
+        suggestedFocus: existingSubmission.suggestedFocus || sub.suggestedFocus,
         problemCluster: existingSubmission.problemCluster || sub.problemCluster,
         angleIndex: existingSubmission.angleIndex
       };
       preservedCount++;
     } else if (existingSubmission) {
       // Existing pending or error submission being reloaded
-      profile.submissions[subTurnus] = { ...sub, turnus: subTurnus };
+      profile.submissions[subTurnus] = {
+        ...sub,
+        turnus: subTurnus,
+        gender: profile.gender,
+        abstract: existingSubmission.abstract || sub.abstract,
+        suggestedFocus: existingSubmission.suggestedFocus || sub.suggestedFocus
+      };
       updatedCount++;
     } else {
       // New submission for this turnus
-      profile.submissions[subTurnus] = { ...sub, turnus: subTurnus };
+      profile.submissions[subTurnus] = {
+        ...sub,
+        turnus: subTurnus,
+        gender: profile.gender
+      };
       addedCount++;
     }
 

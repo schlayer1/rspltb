@@ -1,4 +1,5 @@
 import { EvaluationSettings, ProblemCluster, StudentProfile } from '../types';
+import { enforceSalutation } from './nameSalutationService';
 
 export const CANDIDATE_FLASH_MODELS = [
   'gemini-flash-lite-latest',
@@ -110,30 +111,72 @@ export async function checkGeminiApiHealth(apiKey?: string): Promise<{ ok: boole
 }
 
 /**
- * Parses [PROBLEM: Kategorie | Fallbeispiel] tag from raw generated text
+ * Parses [PROBLEM: ...], [ABSTRACT: ...], and [FOKUS: ...] tags from raw generated text
  */
-export function extractProblemCluster(rawText: string): { cleanFeedback: string; problemCluster?: ProblemCluster } {
-  const match = rawText.match(/\[PROBLEM:\s*([^|]+)\s*\|\s*([^\]]+)\]/i);
-  if (!match) {
-    return { cleanFeedback: rawText.trim() };
+export function extractStructuredSections(rawText: string): {
+  cleanFeedback: string;
+  abstract?: string;
+  suggestedFocus?: { category: string; reason: string };
+  problemCluster?: ProblemCluster;
+} {
+  let text = rawText;
+  let abstract: string | undefined;
+  let suggestedFocus: { category: string; reason: string } | undefined;
+  let problemCluster: ProblemCluster | undefined;
+
+  // Extract Abstract
+  const abstractMatch = text.match(/\[ABSTRACT:\s*([^\]]+)\]/i);
+  if (abstractMatch) {
+    abstract = abstractMatch[1].trim();
+    text = text.replace(abstractMatch[0], '').trim();
   }
 
-  const category = match[1].trim();
-  const snippet = match[2].trim();
-  const cleanFeedback = rawText.replace(match[0], '').trim();
+  // Extract Suggested Focus
+  const focusMatch = text.match(/\[FOKUS:\s*([^|]+)\s*\|\s*([^\]]+)\]/i);
+  if (focusMatch) {
+    suggestedFocus = {
+      category: focusMatch[1].trim(),
+      reason: focusMatch[2].trim()
+    };
+    text = text.replace(focusMatch[0], '').trim();
+  }
+
+  // Extract Problem Cluster
+  const problemMatch = text.match(/\[PROBLEM:\s*([^|]+)\s*\|\s*([^\]]+)\]/i);
+  if (problemMatch) {
+    problemCluster = {
+      category: problemMatch[1].trim(),
+      snippet: problemMatch[2].trim()
+    };
+    text = text.replace(problemMatch[0], '').trim();
+  }
 
   return {
-    cleanFeedback,
-    problemCluster: { category, snippet }
+    cleanFeedback: text.trim(),
+    abstract,
+    suggestedFocus,
+    problemCluster
   };
 }
+
+export const extractProblemCluster = (rawText: string) => {
+  const res = extractStructuredSections(rawText);
+  return { cleanFeedback: res.cleanFeedback, problemCluster: res.problemCluster };
+};
 
 export async function evaluateSubmissionText(
   rawText: string,
   settings: EvaluationSettings,
   angleIndex: number,
+  salutation?: string,
   onStep?: (step: string) => void
-): Promise<{ feedback: string; problemCluster?: ProblemCluster; usedModel: string }> {
+): Promise<{
+  feedback: string;
+  abstract?: string;
+  suggestedFocus?: { category: string; reason: string };
+  problemCluster?: ProblemCluster;
+  usedModel: string;
+}> {
   const activeKey = getActiveApiKey(settings.apiKey);
   if (!activeKey) {
     throw new Error('Kein Gemini API-Schlüssel gefunden. Bitte in den Einstellungen hinterlegen.');
@@ -154,17 +197,26 @@ export async function evaluateSubmissionText(
   
   // Specific constraints & diversity rules
   promptLines.push('--- VERBINDLICHE KRITERIEN & DIVERSIFIZIERUNG (ANTI-KI-ENGINE) ---');
-  promptLines.push(`1. Maximal ${settings.maxSentences} Sätze. Kein Satz mehr.`);
-  promptLines.push('2. Benutze Haupt- und Nebensätze für einen organischen, flüssigen und lebendigen Dozenten-Stil.');
-  promptLines.push(`3. Spezifischer Einstiegs-Fokus für diese Einreichung: ${angle.instruction}`);
-  promptLines.push('4. Greife mindestens 2 bis 3 konkrete Situationen, Zitate oder Fachinhalte DIREKT aus dem folgenden Text auf, sodass das Feedback unverwechselbar individuell auf diesen Text zugeschnitten ist.');
-  promptLines.push('5. VERBOT VON KI-FLOSKELN: Nutze keine stereotypen Formulierungen wie: ' + ANTI_AI_BLACKLIST.map(b => `"${b}"`).join(', ') + '. Schreibe wie ein echter Universitätsdozent (Tim), der den Text aufmerksam gelesen hat und im Gespräch mit dem Studierenden reflektiert.');
-  promptLines.push(`6. Beende das Dozenten-Feedback strikt mit: "${settings.signOff}"`);
+  if (salutation) {
+    promptLines.push(`1. PERSÖNLICHE ANREDE: Beginne das Feedback ZWINGEND in der allerersten Zeile mit exakt: "${salutation}," gefolgt von einer Leerzeile. Benutze niemals den Nachnamen und keine Floskeln wie "Liebe/r".`);
+  } else {
+    promptLines.push('1. PERSÖNLICHE ANREDE: Beginne das Feedback mit einer freundlichen persönlichen Anrede mit Vornamen.');
+  }
+  promptLines.push(`2. Maximal ${settings.maxSentences} Sätze für den Feedback-Haupttext. Kein Satz mehr.`);
+  promptLines.push('3. Benutze Haupt- und Nebensätze für einen organischen, flüssigen und lebendigen Dozenten-Stil.');
+  promptLines.push(`4. Spezifischer Einstiegs-Fokus für diese Einreichung: ${angle.instruction}`);
+  promptLines.push('5. Greife mindestens 2 bis 3 konkrete Situationen, Zitate oder Fachinhalte DIREKT aus dem folgenden Text auf, sodass das Feedback unverwechselbar individuell auf diesen Text zugeschnitten ist.');
+  promptLines.push('6. VERBOT VON KI-FLOSKELN: Nutze keine stereotypen Formulierungen wie: ' + ANTI_AI_BLACKLIST.map(b => `"${b}"`).join(', ') + '. Schreibe wie ein echter Universitätsdozent (Tim), der den Text aufmerksam gelesen hat und im Gespräch mit dem Studierenden reflektiert.');
+  promptLines.push(`7. Beende das Dozenten-Feedback strikt mit: "${settings.signOff}"`);
   promptLines.push('');
-  promptLines.push('7. ZUSATZ FÜR DIE SEMINAR-BERATUNGSRUNDE:');
-  promptLines.push('Füge ganz am Ende deiner Antwort in einer separaten Zeile die zentrale praxeologische Herausforderung / das Hauptproblem des Textes in exakt diesem Format an:');
-  promptLines.push('[PROBLEM: Kategorie | 1 prägnanter Satz zum konkreten Fall]');
-  promptLines.push('Wähle als Kategorie eines der gängigen Seminar-Themen, z. B.: Unterrichtsstörungen & Disziplin, Raumpräsenz & Körpersprache, Beziehungsarbeit & Deeskalation, Differenzierung & Heterogenität, Rollenwechsel & Autorität, Zeitmanagement & Phasierung, Umgang mit Misserfolgen.');
+  promptLines.push('8. PFLICHTFELDER FÜR SEMINARBERATUNG & ABSTRACT:');
+  promptLines.push('Füge am Ende deiner Antwort in separaten Zeilen folgende Analyseblöcke an:');
+  promptLines.push('[ABSTRACT: 2 bis 3 prägnante Sätze Zusammenfassung der wesentlichen Praxiserfahrungen und Reflexionsmomente des Studierenden]');
+  promptLines.push('[FOKUS: Exakter Name der didaktisch am besten passenden Einstiegsperspektive | 1 prägnanter Satz Begründung]');
+  promptLines.push('Mögliche Namen für FOKUS sind:');
+  DIVERSITY_ANGLES.forEach(a => promptLines.push(`- ${a.name}`));
+  promptLines.push('[PROBLEM: Kategorie | 1 prägnanter Satz zum konkreten Fall für die Beratungsrunde]');
+  promptLines.push('Wähle als Kategorie für PROBLEM eines der Seminar-Themen: Unterrichtsstörungen & Disziplin, Raumpräsenz & Körpersprache, Beziehungsarbeit & Deeskalation, Differenzierung & Heterogenität, Rollenwechsel & Autorität, Zeitmanagement & Phasierung, Umgang mit Misserfolgen.');
 
   // Specific criteria flags if checked
   if (settings.criteria.observeAction) {
@@ -214,7 +266,7 @@ export async function evaluateSubmissionText(
 
       if (response.ok) {
         if (onStep) {
-          onStep('Dozenten-Feedback & Problemfeld wird analysiert...');
+          onStep('Dozenten-Feedback, Abstract & Problemfeld wird analysiert...');
         }
 
         const data = await response.json();
@@ -234,10 +286,12 @@ export async function evaluateSubmissionText(
             onStep('Prüfe Anti-KI Kriterien & Signatur...');
           }
 
-          const { cleanFeedback, problemCluster } = extractProblemCluster(text);
+          const { cleanFeedback, abstract, suggestedFocus, problemCluster } = extractStructuredSections(text);
 
           return {
             feedback: cleanFeedback,
+            abstract,
+            suggestedFocus,
             problemCluster,
             usedModel: model
           };
@@ -341,5 +395,5 @@ STIL & REGELN:
     throw new Error('Keine Antwort von Gemini erhalten.');
   }
 
-  return text;
+  return enforceSalutation(text, student.fullName, settings.signOff, student.gender);
 }

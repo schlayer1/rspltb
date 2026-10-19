@@ -15,11 +15,13 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { generateSemesterSummaryFeedback } from '../services/geminiService';
+import { parseStudentIdentity } from '../services/nameSalutationService';
 
 interface SemesterPortfolioViewProps {
   database: SeminarDatabase;
   settings: EvaluationSettings;
   onUpdateSummary: (studentId: string, summary: string, approved: boolean) => void;
+  onUpdateGender: (studentId: string, gender: 'male' | 'female') => void;
   onJumpToSubmission: (studentId: string, turnus: TurnusId) => void;
 }
 
@@ -27,6 +29,7 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
   database,
   settings,
   onUpdateSummary,
+  onUpdateGender,
   onJumpToSubmission
 }) => {
   const studentsList = Object.values(database.students);
@@ -121,22 +124,42 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
             {filteredStudents.map(student => {
               const isSelected = selectedStudent?.id === student.id;
               const subCount = Object.keys(student.submissions).length;
+              const studentIdentity = parseStudentIdentity(student.fullName, student.gender);
 
               return (
                 <div
                   key={student.id}
                   onClick={() => setSelectedStudentId(student.id)}
                   className={`p-3.5 cursor-pointer transition-colors flex items-center justify-between gap-2 ${
-                    isSelected ? 'bg-indigo-50/80 border-l-4 border-l-indigo-900' : 'hover:bg-slate-50'
+                    isSelected ? 'bg-indigo-50/80 border-l-4 border-l-[#002f5d]' : 'hover:bg-slate-50'
                   }`}
                 >
                   <div className="min-w-0">
                     <p className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
                       {student.fullName}
                     </p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                      Matr.-Nr.: {student.matrikelnummer || student.moodleId || 'Moodle-Sync'} • {subCount}/6 Abgaben
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        Matr.-Nr.: {student.matrikelnummer || student.moodleId || 'Moodle-Sync'} • {subCount}/6
+                      </span>
+                      {/* Gender Quick-Toggle */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const nextGender = studentIdentity.gender === 'female' ? 'male' : 'female';
+                          onUpdateGender(student.id, nextGender);
+                        }}
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold transition-all border ${
+                          studentIdentity.gender === 'female'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                            : 'bg-blue-50 text-[#002f5d] border-blue-200 hover:bg-blue-100'
+                        }`}
+                        title="Klicken, um Anrede zwischen 'Lieber' (♂) und 'Liebe' (♀) umzuschalten"
+                      >
+                        {studentIdentity.gender === 'female' ? '♀ Liebe' : '♂ Lieber'}
+                      </button>
+                    </div>
                   </div>
 
                   {/* 6 Mini-Pills */}
@@ -171,14 +194,49 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
               {/* Profil-Header */}
               <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-lg font-bold text-slate-900">{selectedStudent.fullName}</h3>
                     <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-md border border-slate-200">
                       Matr.-Nr.: {selectedStudent.matrikelnummer || selectedStudent.moodleId}
                     </span>
+
+                    {/* Männlich / Weiblich Toggle Buttons */}
+                    {(() => {
+                      const identity = parseStudentIdentity(selectedStudent.fullName, selectedStudent.gender);
+                      return (
+                        <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 ml-1">
+                          <button
+                            type="button"
+                            onClick={() => onUpdateGender(selectedStudent.id, 'male')}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-all ${
+                              identity.gender === 'male'
+                                ? 'bg-[#002f5d] text-white shadow-xs font-semibold'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                            }`}
+                            title="Anrede auf 'Lieber [Vorname]' setzen"
+                          >
+                            <span>♂ Lieber</span>
+                            <span className="text-[10px] opacity-75">(männlich)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateGender(selectedStudent.id, 'female')}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-all ${
+                              identity.gender === 'female'
+                                ? 'bg-[#ae9a63] text-white shadow-xs font-semibold'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                            }`}
+                            title="Anrede auf 'Liebe [Vorname]' setzen"
+                          >
+                            <span>♀ Liebe</span>
+                            <span className="text-[10px] opacity-75">(weiblich)</span>
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    Lehramtsseminar Reflexion schulischer Praxis (FSU Jena · ZLB) · Dozent Tim
+                    Anrede in Feedbacks: <strong className="text-slate-700 font-semibold">{parseStudentIdentity(selectedStudent.fullName, selectedStudent.gender).salutation},</strong> · Lehramtsseminar Reflexion schulischer Praxis (FSU Jena · ZLB)
                   </p>
                 </div>
 
@@ -186,9 +244,9 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
                   type="button"
                   onClick={handleGenerateSummary}
                   disabled={isGenerating || Object.keys(selectedStudent.submissions).length === 0}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-indigo-900 hover:bg-indigo-800 text-white shadow-xs transition-all disabled:opacity-50 shrink-0"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#002f5d] hover:bg-[#002244] text-white shadow-xs transition-all disabled:opacity-50 shrink-0"
                 >
-                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <Sparkles className="w-4 h-4 text-[#ae9a63]" />
                   {isGenerating ? (generatingStep || 'Generiere Synthese...') : 'Semester-Gesamtfeedback erstellen'}
                 </button>
               </div>

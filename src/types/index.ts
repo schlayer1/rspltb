@@ -5,11 +5,17 @@ export interface ProblemCluster {
   snippet: string; // 1-sentence concrete case description from student text
 }
 
+export interface SuggestedFocus {
+  category: string; // e.g. "Rollenwechsel & Lehrkraft-Selbstverständnis"
+  reason: string;   // e.g. "Der Student reflektiert intensiv über die Rollenfindung..."
+}
+
 export interface StudentSubmission {
   id: string;
   matrikelnummer?: string; // FSU Matrikelnummer e.g. "1546331" from "Arthur Mika_1546331_assignsubmission_file"
   moodleId: string; // alias for matrikelnummer for backwards compatibility
   studentName: string; // e.g. "Arthur Mika"
+  gender?: 'male' | 'female';
   turnus: TurnusId;
   rawFileName: string;
   folderPath: string; // Original Moodle folder path for ZIP reconstruction
@@ -20,6 +26,8 @@ export interface StudentSubmission {
   status: 'pending' | 'processing' | 'completed' | 'approved' | 'error';
   generatedFeedback: string;
   editedFeedback: string;
+  abstract?: string; // 2-3 sentence AI abstract of the LTB
+  suggestedFocus?: SuggestedFocus; // AI recommended perspective
   problemCluster?: ProblemCluster;
   errorMessage?: string;
   angleIndex?: number;
@@ -32,6 +40,7 @@ export interface StudentProfile {
   matrikelnummer?: string;
   moodleId: string;
   fullName: string;
+  gender?: 'male' | 'female'; // User-toggleable in SemesterPortfolio
   submissions: Partial<Record<TurnusId, StudentSubmission>>;
   semesterSummaryFeedback?: string;
   summaryApproved?: boolean;

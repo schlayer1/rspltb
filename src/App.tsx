@@ -21,6 +21,7 @@ import {
 import { parseZipArchive, parseDirectFiles, parseFolderFileList } from './services/fileParser';
 import { evaluateSubmissionText, checkGeminiApiHealth } from './services/geminiService';
 import { pseudonymizeText, restorePersonalFeedback } from './services/pseudonymService';
+import { parseStudentIdentity, enforceSalutation } from './services/nameSalutationService';
 import { 
   loadDatabase, 
   saveDatabase, 
@@ -279,9 +280,15 @@ export const App: React.FC = () => {
     sub: StudentSubmission, 
     angleIndex: number = 0,
     onStep?: (step: string) => void
-  ): Promise<{ feedback: string; problemCluster?: any }> => {
+  ): Promise<{ 
+    feedback: string; 
+    abstract?: string; 
+    suggestedFocus?: { category: string; reason: string }; 
+    problemCluster?: any 
+  }> => {
     let textToSend = sub.rawText;
     const pseudonym = sub.pseudonym || 'Studierende/r';
+    const identity = parseStudentIdentity(sub.studentName, sub.gender);
 
     // 1. DSGVO Masking
     if (settings.pseudonymize) {
@@ -291,16 +298,30 @@ export const App: React.FC = () => {
     }
 
     // 2. Call Gemini API Cascade with 8192 tokens
-    const { feedback, problemCluster } = await evaluateSubmissionText(textToSend, settings, angleIndex, onStep);
+    const result = await evaluateSubmissionText(
+      textToSend, 
+      settings, 
+      angleIndex, 
+      identity.salutation, 
+      onStep
+    );
 
     // 3. Restore Personal Name
-    if (onStep) onStep(`✨ Setze persönliche Ansprache für ${sub.studentName.split(' ')[0]} ein...`);
-    let finalFeedback = feedback;
+    if (onStep) onStep(`✨ Setze persönliche Ansprache für ${identity.firstName} ein...`);
+    let finalFeedback = result.feedback;
     if (settings.pseudonymize) {
-      finalFeedback = restorePersonalFeedback(feedback, sub.studentName, pseudonym);
+      finalFeedback = restorePersonalFeedback(result.feedback, sub.studentName, pseudonym);
     }
 
-    return { feedback: finalFeedback, problemCluster };
+    // 4. Deterministische Anrede & Signatur sicherstellen (keine Nachnamen, keine "Liebe/r" Floskeln)
+    finalFeedback = enforceSalutation(finalFeedback, sub.studentName, settings.signOff, sub.gender);
+
+    return { 
+      feedback: finalFeedback, 
+      abstract: result.abstract, 
+      suggestedFocus: result.suggestedFocus, 
+      problemCluster: result.problemCluster 
+    };
   };
 
   // Evaluate single manually
@@ -312,17 +333,25 @@ export const App: React.FC = () => {
     const studentKey = sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_');
 
     try {
-      const { feedback, problemCluster } = await evaluateSingle(sub, angleIndex);
+      const { feedback, abstract, suggestedFocus, problemCluster } = await evaluateSingle(sub, angleIndex);
       
       const updatedStudents = { ...database.students };
       if (updatedStudents[studentKey]) {
-        updatedStudents[studentKey].submissions[activeTurnus] = {
-          ...sub,
-          status: 'completed',
-          generatedFeedback: feedback,
-          editedFeedback: feedback,
-          problemCluster,
-          angleIndex
+        updatedStudents[studentKey] = {
+          ...updatedStudents[studentKey],
+          submissions: {
+            ...updatedStudents[studentKey].submissions,
+            [activeTurnus]: {
+              ...sub,
+              status: 'completed',
+              generatedFeedback: feedback,
+              editedFeedback: feedback,
+              abstract: abstract || sub.abstract,
+              suggestedFocus: suggestedFocus || sub.suggestedFocus,
+              problemCluster: problemCluster || sub.problemCluster,
+              angleIndex
+            }
+          }
         };
         await persistDatabase({ ...database, students: updatedStudents });
       }
@@ -366,21 +395,31 @@ export const App: React.FC = () => {
 
       try {
         const angleIndex = i;
-        const { feedback, problemCluster } = await evaluateSingle(currentSub, angleIndex, (stepText) => {
+        const { feedback, abstract, suggestedFocus, problemCluster } = await evaluateSingle(currentSub, angleIndex, (stepText) => {
           setBatchProgress(prev => ({ ...prev, currentStepText: stepText }));
         });
 
         if (currentDb.students[studentKey]) {
-          currentDb.students[studentKey].submissions[activeTurnus] = {
-            ...currentSub,
-            status: 'completed',
-            generatedFeedback: feedback,
-            editedFeedback: feedback,
-            problemCluster,
-            angleIndex
+          const updatedStudents = { ...currentDb.students };
+          updatedStudents[studentKey] = {
+            ...updatedStudents[studentKey],
+            submissions: {
+              ...updatedStudents[studentKey].submissions,
+              [activeTurnus]: {
+                ...currentSub,
+                status: 'completed',
+                generatedFeedback: feedback,
+                editedFeedback: feedback,
+                abstract,
+                suggestedFocus,
+                problemCluster,
+                angleIndex
+              }
+            }
           };
+          currentDb = { ...currentDb, students: updatedStudents };
           await saveDatabase(currentDb);
-          setDatabase({ ...currentDb });
+          setDatabase(currentDb);
         }
       } catch (err: any) {
         setBatchProgress(prev => ({ ...prev, errorsCount: prev.errorsCount + 1 }));
@@ -408,6 +447,46 @@ export const App: React.FC = () => {
     cancelBatchRef.current = true;
     setBatchProgress(prev => ({ ...prev, isProcessing: false }));
     setRateLimitSecondsLeft(0);
+  };
+
+  // Update student gender (manual toggle for 'male' / 'female' override)
+  const handleUpdateStudentGender = async (studentId: string, newGender: 'male' | 'female') => {
+    const updatedStudents = { ...database.students };
+    const student = updatedStudents[studentId];
+    if (!student) return;
+
+    student.gender = newGender;
+
+    // Update all submissions of this student and update salutations in existing feedbacks
+    const updatedSubmissions = { ...student.submissions };
+    (Object.keys(updatedSubmissions) as TurnusId[]).forEach(turnus => {
+      const sub = updatedSubmissions[turnus];
+      if (sub) {
+        const updatedSub = { ...sub, gender: newGender };
+        if (updatedSub.editedFeedback || updatedSub.generatedFeedback) {
+          const currentText = updatedSub.editedFeedback || updatedSub.generatedFeedback;
+          const fixedFeedback = enforceSalutation(currentText, student.fullName, settings.signOff, newGender);
+          updatedSub.editedFeedback = fixedFeedback;
+          if (updatedSub.generatedFeedback) {
+            updatedSub.generatedFeedback = enforceSalutation(updatedSub.generatedFeedback, student.fullName, settings.signOff, newGender);
+          }
+        }
+        updatedSubmissions[turnus] = updatedSub;
+      }
+    });
+
+    student.submissions = updatedSubmissions;
+    if (student.semesterSummaryFeedback) {
+      student.semesterSummaryFeedback = enforceSalutation(
+        student.semesterSummaryFeedback, 
+        student.fullName, 
+        settings.signOff, 
+        newGender
+      );
+    }
+    updatedStudents[studentId] = { ...student };
+
+    await persistDatabase({ ...database, students: updatedStudents });
   };
 
   // Feedback Editing
@@ -580,6 +659,7 @@ export const App: React.FC = () => {
             database={database}
             settings={settings}
             onUpdateSummary={handleUpdateSemesterSummary}
+            onUpdateGender={handleUpdateStudentGender}
             onJumpToSubmission={handleJumpToSubmission}
           />
         )}
@@ -639,6 +719,7 @@ export const App: React.FC = () => {
                       onUpdateFeedback={handleUpdateFeedback}
                       onApprove={handleApprove}
                       onRegenerate={handleEvaluateSingle}
+                      onUpdateGender={handleUpdateStudentGender}
                       onNavigate={handleNavigate}
                       hasPrev={selectedIndex > 0}
                       hasNext={selectedIndex < filteredSubmissions.length - 1}
