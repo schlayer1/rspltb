@@ -2,27 +2,24 @@ import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import mammoth from 'mammoth';
-import { StudentSubmission } from '../types';
+import { StudentSubmission, TurnusId } from '../types';
 
 // Set up PDF.js worker via Vite's ?url asset loader
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 /**
- * Intelligent extraction of student name from Moodle directory / file name.
+ * Extracts student name from Moodle directory / file name.
  * Typical Moodle patterns:
- * 1) "Max Mustermann_123456_assignsubmission_file_/Lerntagebuch_Max.pdf"
- * 2) "Mustermann, Max_123456_assignsubmission_file_/dokument.pdf"
- * 3) "LTB_Mustermann_Max.pdf"
- * 4) "Max_Mustermann_Lerntagebuch.docx"
+ * - "Arthur Mika_1546331_assignsubmission_file_/Mika_LTB1.pdf"
+ * - "Alexandra Philipp_1546349_assignsubmission_file_/Lerntagebuch.docx"
  */
 export function extractStudentNameFromPath(path: string): string {
-  // Normalize slashes
   const normalized = path.replace(/\\/g, '/');
   const segments = normalized.split('/');
 
-  // Check if inside a Moodle submission folder
+  // Check if inside a Moodle submission folder (e.g. "Arthur Mika_1546331_assignsubmission_file")
   for (const seg of segments) {
-    if (seg.includes('_assignsubmission_file_') || seg.includes('_assignsubmission_onlinetext_')) {
+    if (seg.includes('_assignsubmission_file') || seg.includes('_assignsubmission_onlinetext')) {
       const folderStudent = seg.replace(/_\d+_assignsubmission.*/i, '').trim();
       if (folderStudent) {
         return cleanupStudentName(folderStudent);
@@ -34,26 +31,65 @@ export function extractStudentNameFromPath(path: string): string {
   const filename = segments[segments.length - 1] || path;
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
 
-  // Strip generic prefixes like LTB, Lerntagebuch, RSP, Seminar, etc.
   const cleaned = nameWithoutExt
-    .replace(/^(lerntagebuch|ltb|rsp|portfolio|abgabe|hausarbeit|aufgabe)[_\s-]+/i, '')
-    .replace(/[_\s-]+(lerntagebuch|ltb|rsp|abgabe|final|v\d+)$/i, '')
+    .replace(/^(lerntagebuch|ltb|rsp|portfolio|abgabe|hausarbeit|aufgabe)[_\s-]*/i, '')
+    .replace(/[_\s-]*(lerntagebuch|ltb\d*|rsp|abgabe|final|v\d+)$/i, '')
     .replace(/_\d+_assignsubmission.*/i, '');
 
   return cleanupStudentName(cleaned);
 }
 
+/**
+ * Extracts Moodle submission/student ID from directory name
+ * e.g. "Arthur Mika_1546331_assignsubmission_file" -> "1546331"
+ */
+export function extractMoodleIdFromPath(path: string): string {
+  const match = path.match(/_(\d{5,9})_assignsubmission/i);
+  if (match && match[1]) {
+    return match[1];
+  }
+  // Fallback: search for any 5-8 digit number
+  const numMatch = path.match(/\b(\d{5,8})\b/);
+  return numMatch ? numMatch[1] : '';
+}
+
+/**
+ * Detects which of the 6 turnuses (LTB 1 to 6) a file belongs to based on its name/path.
+ * e.g. "Mika_LTB1.pdf" -> ltb1 (confident = true)
+ * e.g. "Lerntagebuch.pdf" -> returns defaultTurnus (confident = false)
+ */
+export function detectTurnusFromPath(
+  path: string,
+  defaultTurnus: TurnusId = 'ltb1'
+): { detectedTurnus: TurnusId; isConfident: boolean } {
+  const lower = path.toLowerCase();
+
+  const patterns: [RegExp, TurnusId][] = [
+    [/ltb[-_\s]*1\b|lerntagebuch[-_\s]*1\b|abgabe[-_\s]*1\b/i, 'ltb1'],
+    [/ltb[-_\s]*2\b|lerntagebuch[-_\s]*2\b|abgabe[-_\s]*2\b/i, 'ltb2'],
+    [/ltb[-_\s]*3\b|lerntagebuch[-_\s]*3\b|abgabe[-_\s]*3\b/i, 'ltb3'],
+    [/ltb[-_\s]*4\b|lerntagebuch[-_\s]*4\b|abgabe[-_\s]*4\b/i, 'ltb4'],
+    [/ltb[-_\s]*5\b|lerntagebuch[-_\s]*5\b|abgabe[-_\s]*5\b/i, 'ltb5'],
+    [/ltb[-_\s]*6\b|lerntagebuch[-_\s]*6\b|abgabe[-_\s]*6\b/i, 'ltb6']
+  ];
+
+  for (const [regex, turnus] of patterns) {
+    if (regex.test(lower)) {
+      return { detectedTurnus: turnus, isConfident: true };
+    }
+  }
+
+  return { detectedTurnus: defaultTurnus, isConfident: false };
+}
+
 function cleanupStudentName(rawName: string): string {
-  // If formatted like "Nachname, Vorname" -> "Vorname Nachname"
   if (rawName.includes(',')) {
     const parts = rawName.split(',');
     if (parts.length >= 2) {
       return `${parts[1].trim()} ${parts[0].trim()}`;
     }
   }
-  // Replace underscores and extra hyphens with spaces
   const spaced = rawName.replace(/[_\t]+/g, ' ').replace(/\s+/g, ' ').trim();
-  // If in format "Nachname Vorname" or camelCase/PascalCase
   return spaced || 'Unbekannte/r Studierende/r';
 }
 
@@ -109,17 +145,17 @@ export function parseTxtBuffer(arrayBuffer: ArrayBuffer): string {
  */
 export async function parseZipArchive(
   zipFile: File,
+  targetTurnus: TurnusId = 'ltb1',
   onProgress?: (loaded: number, total: number, currentName: string) => void
-): Promise<StudentSubmission[]> {
+): Promise<{ submissions: StudentSubmission[]; hasUncertainTurnus: boolean }> {
   const zip = new JSZip();
   const loadedZip = await zip.loadAsync(zipFile);
   const submissions: StudentSubmission[] = [];
+  let hasUncertainTurnus = false;
 
-  // Filter valid document files inside ZIP
   const validEntries: { path: string; file: JSZip.JSZipObject }[] = [];
   loadedZip.forEach((relativePath, zipEntry) => {
     if (zipEntry.dir) return;
-    // Skip OS files (e.g. __MACOSX, .DS_Store)
     if (relativePath.includes('__MACOSX') || relativePath.includes('.DS_Store')) return;
 
     const lower = relativePath.toLowerCase();
@@ -138,6 +174,14 @@ export async function parseZipArchive(
       onProgress(i + 1, validEntries.length, fileName);
     }
 
+    const { detectedTurnus, isConfident } = detectTurnusFromPath(path, targetTurnus);
+    if (!isConfident) {
+      hasUncertainTurnus = true;
+    }
+
+    const moodleId = extractMoodleIdFromPath(path);
+    const studentName = extractStudentNameFromPath(path);
+
     try {
       const arrayBuffer = await file.async('arraybuffer');
       let rawText = '';
@@ -154,14 +198,15 @@ export async function parseZipArchive(
         rawText = parseTxtBuffer(arrayBuffer);
       }
 
-      const studentName = extractStudentNameFromPath(path);
       const words = rawText.split(/\s+/).filter(w => w.length > 0).length;
 
       submissions.push({
-        id: `sub_${Date.now()}_${counter}`,
+        id: `sub_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
+        moodleId,
+        studentName,
+        turnus: detectedTurnus,
         rawFileName: fileName,
         folderPath: path,
-        studentName,
         fileType,
         rawText,
         wordCount: words,
@@ -173,12 +218,13 @@ export async function parseZipArchive(
       });
       counter++;
     } catch (err: any) {
-      const studentName = extractStudentNameFromPath(path);
       submissions.push({
-        id: `sub_${Date.now()}_${counter}`,
+        id: `sub_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
+        moodleId,
+        studentName,
+        turnus: detectedTurnus,
         rawFileName: fileName,
         folderPath: path,
-        studentName,
         fileType: lower.endsWith('.pdf') ? 'pdf' : lower.endsWith('.docx') ? 'docx' : 'other',
         rawText: '',
         wordCount: 0,
@@ -192,7 +238,7 @@ export async function parseZipArchive(
     }
   }
 
-  return submissions;
+  return { submissions, hasUncertainTurnus };
 }
 
 /**
@@ -200,9 +246,11 @@ export async function parseZipArchive(
  */
 export async function parseDirectFiles(
   files: File[],
+  targetTurnus: TurnusId = 'ltb1',
   onProgress?: (loaded: number, total: number, currentName: string) => void
-): Promise<StudentSubmission[]> {
+): Promise<{ submissions: StudentSubmission[]; hasUncertainTurnus: boolean }> {
   const submissions: StudentSubmission[] = [];
+  let hasUncertainTurnus = false;
 
   let counter = 1;
   for (let i = 0; i < files.length; i++) {
@@ -213,6 +261,14 @@ export async function parseDirectFiles(
     if (onProgress) {
       onProgress(i + 1, files.length, fileName);
     }
+
+    const { detectedTurnus, isConfident } = detectTurnusFromPath(fileName, targetTurnus);
+    if (!isConfident) {
+      hasUncertainTurnus = true;
+    }
+
+    const moodleId = extractMoodleIdFromPath(fileName);
+    const studentName = extractStudentNameFromPath(fileName);
 
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -230,14 +286,15 @@ export async function parseDirectFiles(
         rawText = parseTxtBuffer(arrayBuffer);
       }
 
-      const studentName = extractStudentNameFromPath(fileName);
       const words = rawText.split(/\s+/).filter(w => w.length > 0).length;
 
       submissions.push({
-        id: `sub_direct_${Date.now()}_${counter}`,
+        id: `sub_direct_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
+        moodleId,
+        studentName,
+        turnus: detectedTurnus,
         rawFileName: fileName,
         folderPath: fileName,
-        studentName,
         fileType,
         rawText,
         wordCount: words,
@@ -250,10 +307,12 @@ export async function parseDirectFiles(
       counter++;
     } catch (err: any) {
       submissions.push({
-        id: `sub_direct_${Date.now()}_${counter}`,
+        id: `sub_direct_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
+        moodleId,
+        studentName,
+        turnus: detectedTurnus,
         rawFileName: fileName,
         folderPath: fileName,
-        studentName: extractStudentNameFromPath(fileName),
         fileType: 'other',
         rawText: '',
         wordCount: 0,
@@ -267,5 +326,5 @@ export async function parseDirectFiles(
     }
   }
 
-  return submissions;
+  return { submissions, hasUncertainTurnus };
 }

@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
+import { TurnusNavigation } from './components/TurnusNavigation';
 import { UploadZone } from './components/UploadZone';
 import { StatsBar } from './components/StatsBar';
 import { SubmissionList } from './components/SubmissionList';
@@ -7,12 +8,30 @@ import { SplitScreenWorkspace } from './components/SplitScreenWorkspace';
 import { SettingsModal } from './components/SettingsModal';
 import { BatchProgressModal } from './components/BatchProgressModal';
 import { ExportModal } from './components/ExportModal';
-import { StudentSubmission, EvaluationSettings, ProcessingProgress } from './types';
+import { TurnusConfirmModal } from './components/TurnusConfirmModal';
+import { BeratungsrundeDashboard } from './components/BeratungsrundeDashboard';
+import { SemesterPortfolioView } from './components/SemesterPortfolioView';
+import { 
+  StudentSubmission, 
+  EvaluationSettings, 
+  ProcessingProgress, 
+  SeminarDatabase, 
+  TurnusId 
+} from './types';
 import { parseZipArchive, parseDirectFiles } from './services/fileParser';
-import { evaluateSubmissionText } from './services/geminiService';
+import { evaluateSubmissionText, checkGeminiApiHealth } from './services/geminiService';
 import { pseudonymizeText, restorePersonalFeedback } from './services/pseudonymService';
+import { 
+  loadDatabase, 
+  saveDatabase, 
+  mergeIncrementalSubmissions, 
+  exportDatabaseToJson, 
+  importDatabaseFromJson,
+  getInitialDatabase 
+} from './services/dbService';
+import { triggerFileDownload } from './services/exportService';
 import { SAMPLE_SUBMISSIONS } from './data/sampleSubmissions';
-import { Sparkles, FileText, ArrowLeft, Layers, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Layers, ShieldCheck, CheckCircle2, ArrowRight } from 'lucide-react';
 
 const DEFAULT_SETTINGS: EvaluationSettings = {
   apiKey: localStorage.getItem('rsp_gemini_api_key') || '',
@@ -34,8 +53,15 @@ const DEFAULT_SETTINGS: EvaluationSettings = {
 };
 
 export const App: React.FC = () => {
-  const [submissions, setSubmissions] = useState<StudentSubmission[]>([]);
+  // Database State (IndexedDB)
+  const [database, setDatabase] = useState<SeminarDatabase>(getInitialDatabase());
+  const [activeTab, setActiveTab] = useState<TurnusId | 'beratung' | 'portfolio'>('ltb1');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Selective Batch Checkbox IDs
+  const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
+
+  // Settings
   const [settings, setSettings] = useState<EvaluationSettings>(() => {
     const saved = localStorage.getItem('rsp_evaluation_settings');
     if (saved) {
@@ -46,20 +72,34 @@ export const App: React.FC = () => {
     return DEFAULT_SETTINGS;
   });
 
+  // UI Filters
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'approved' | 'error'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // UI Modals
+  // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState('');
+  const [uncertainUploadData, setUncertainUploadData] = useState<{
+    files: File[] | FileList;
+    detected: TurnusId;
+  } | null>(null);
 
-  // Batch Processing State
+  // API Health Status
+  const [apiHealth, setApiHealth] = useState({
+    ok: true,
+    message: 'Verbunden (13 RPM Queue)',
+    latencyMs: 120,
+    isChecking: false
+  });
+
+  // Batch Progress State
   const [batchProgress, setBatchProgress] = useState<ProcessingProgress>({
     total: 0,
     current: 0,
     currentStudentName: '',
+    currentStepText: '',
     isProcessing: false,
     isPaused: false,
     errorsCount: 0
@@ -69,55 +109,147 @@ export const App: React.FC = () => {
 
   const cancelBatchRef = useRef(false);
 
-  // Save settings when changed
+  // Load Database from IndexedDB on startup
+  useEffect(() => {
+    loadDatabase().then(loaded => {
+      setDatabase(loaded);
+      if (loaded.activeTurnus) {
+        setActiveTab(loaded.activeTurnus);
+      }
+    });
+  }, []);
+
+  // Save database whenever updated
+  const persistDatabase = async (updatedDb: SeminarDatabase) => {
+    setDatabase(updatedDb);
+    await saveDatabase(updatedDb);
+  };
+
+  // Run initial API healthcheck
+  const runApiHealthCheck = async () => {
+    setApiHealth(prev => ({ ...prev, isChecking: true }));
+    const result = await checkGeminiApiHealth(settings.apiKey);
+    setApiHealth({
+      ok: result.ok,
+      message: result.message,
+      latencyMs: result.latencyMs,
+      isChecking: false
+    });
+  };
+
+  useEffect(() => {
+    runApiHealthCheck();
+  }, [settings.apiKey]);
+
+  // Current submissions for active turnus
+  const activeTurnus: TurnusId = activeTab === 'beratung' || activeTab === 'portfolio' ? 'ltb1' : activeTab;
+
+  const currentTurnusSubmissions = useMemo((): StudentSubmission[] => {
+    const list: StudentSubmission[] = [];
+    Object.values(database.students).forEach(student => {
+      const sub = student.submissions[activeTurnus];
+      if (sub) {
+        list.push(sub);
+      }
+    });
+    return list;
+  }, [database.students, activeTurnus]);
+
+  // Update selectedSubIds when submissions change (pre-select unreviewed ones)
+  useEffect(() => {
+    const unreviewed = currentTurnusSubmissions
+      .filter(s => s.status === 'pending' || s.status === 'error')
+      .map(s => s.id);
+    setSelectedSubIds(unreviewed);
+    if (currentTurnusSubmissions.length > 0 && !selectedId) {
+      setSelectedId(currentTurnusSubmissions[0].id);
+    }
+  }, [activeTurnus, currentTurnusSubmissions.length]);
+
+  // Save settings
   const handleSaveSettings = (newSettings: EvaluationSettings) => {
     setSettings(newSettings);
     localStorage.setItem('rsp_evaluation_settings', JSON.stringify(newSettings));
   };
 
-  // Upload Handler (ZIP or Files)
-  const handleFilesSelected = async (files: FileList | File[]) => {
+  // Upload handler with incremental sync
+  const processUploadFiles = async (files: FileList | File[], targetTurnus: TurnusId) => {
     setIsUploading(true);
-    setUploadProgressText('Dateien werden analysiert...');
+    setUploadProgressText('Dateien werden eingelesen...');
 
     try {
       const fileArray = Array.from(files);
       const isZip = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.zip');
 
-      let parsed: StudentSubmission[] = [];
+      let parsedSubmissions: StudentSubmission[] = [];
+      let hasUncertain = false;
 
       if (isZip) {
-        setUploadProgressText('Moodle-ZIP-Archiv wird entpackt...');
-        parsed = await parseZipArchive(fileArray[0], (curr, total, name) => {
+        setUploadProgressText('Moodle-Sammelarchiv (.zip) wird analysiert...');
+        const res = await parseZipArchive(fileArray[0], targetTurnus, (curr, total, name) => {
           setUploadProgressText(`Entpacke Datei ${curr} von ${total}: ${name}`);
         });
+        parsedSubmissions = res.submissions;
+        hasUncertain = res.hasUncertainTurnus;
       } else {
-        setUploadProgressText('Dokumente werden ausgelesen...');
-        parsed = await parseDirectFiles(fileArray, (curr, total, name) => {
+        setUploadProgressText('Dateien werden ausgelesen...');
+        const res = await parseDirectFiles(fileArray, targetTurnus, (curr, total, name) => {
           setUploadProgressText(`Lese Datei ${curr} von ${total}: ${name}`);
         });
+        parsedSubmissions = res.submissions;
+        hasUncertain = res.hasUncertainTurnus;
       }
 
-      setSubmissions(parsed);
-      if (parsed.length > 0) {
-        setSelectedId(parsed[0].id);
+      // If uncertain and user dropped from another tab
+      if (hasUncertain && !uncertainUploadData && fileArray[0].name.toLowerCase().indexOf('ltb') === -1) {
+        setUncertainUploadData({ files, detected: targetTurnus });
+        setIsUploading(false);
+        return;
       }
+
+      // Inkrementelles Mergen mit der IndexedDB-Datenbank
+      const { updatedDb, addedCount, updatedCount, preservedCount } = mergeIncrementalSubmissions(
+        database,
+        parsedSubmissions,
+        targetTurnus
+      );
+
+      await persistDatabase(updatedDb);
+
+      // Select first
+      if (parsedSubmissions.length > 0) {
+        setSelectedId(parsedSubmissions[0].id);
+      }
+
+      alert(`Inkrementeller Moodle-Sync für ${targetTurnus.toUpperCase()} abgeschlossen:\n• ${addedCount} neue Abgaben hinzugefügt\n• ${preservedCount} bereits bewertete Feedbacks geschützt\n• ${updatedCount} aktualisiert`);
     } catch (err: any) {
       alert(`Fehler beim Einlesen: ${err.message || String(err)}`);
     } finally {
       setIsUploading(false);
       setUploadProgressText('');
+      setUncertainUploadData(null);
     }
   };
 
-  const handleLoadSamples = () => {
-    setSubmissions(SAMPLE_SUBMISSIONS);
+  const handleFilesSelected = (files: FileList | File[]) => {
+    processUploadFiles(files, activeTurnus);
+  };
+
+  // Demo Samples
+  const handleLoadSamples = async () => {
+    const { updatedDb } = mergeIncrementalSubmissions(database, SAMPLE_SUBMISSIONS, 'ltb1');
+    await persistDatabase(updatedDb);
     setSelectedId(SAMPLE_SUBMISSIONS[0].id);
   };
 
-  const handleReset = () => {
-    if (confirm('Möchtest du alle aktuellen Einreichungen wirklich leeren?')) {
-      setSubmissions([]);
+  // Reset active turnus
+  const handleResetCurrentTurnus = async () => {
+    if (confirm(`Möchtest du wirklich alle Einreichungen für ${activeTurnus.toUpperCase()} leeren?`)) {
+      const updatedStudents = { ...database.students };
+      Object.keys(updatedStudents).forEach(key => {
+        delete updatedStudents[key].submissions[activeTurnus];
+      });
+      await persistDatabase({ ...database, students: updatedStudents });
       setSelectedId(null);
     }
   };
@@ -127,7 +259,7 @@ export const App: React.FC = () => {
     sub: StudentSubmission, 
     angleIndex: number = 0,
     onStep?: (step: string) => void
-  ): Promise<string> => {
+  ): Promise<{ feedback: string; problemCluster?: any }> => {
     let textToSend = sub.rawText;
     const pseudonym = sub.pseudonym || 'Studierende/r';
 
@@ -138,8 +270,8 @@ export const App: React.FC = () => {
       textToSend = maskedText;
     }
 
-    // 2. Call Gemini API Cascade with 8192 tokens & finishReason check
-    const { feedback } = await evaluateSubmissionText(textToSend, settings, angleIndex, onStep);
+    // 2. Call Gemini API Cascade with 8192 tokens
+    const { feedback, problemCluster } = await evaluateSubmissionText(textToSend, settings, angleIndex, onStep);
 
     // 3. Restore Personal Name
     if (onStep) onStep(`✨ Setze persönliche Ansprache für ${sub.studentName.split(' ')[0]} ein...`);
@@ -148,57 +280,61 @@ export const App: React.FC = () => {
       finalFeedback = restorePersonalFeedback(feedback, sub.studentName, pseudonym);
     }
 
-    return finalFeedback;
+    return { feedback: finalFeedback, problemCluster };
   };
 
-  // Trigger evaluation for one submission manually
+  // Evaluate single manually
   const handleEvaluateSingle = async (id: string, angleIndex: number = 0) => {
-    const sub = submissions.find(s => s.id === id);
+    const sub = currentTurnusSubmissions.find(s => s.id === id);
     if (!sub) return;
 
     setIsRegeneratingSingle(true);
-    setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status: 'processing', errorMessage: undefined } : s));
+    const studentKey = sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_');
 
     try {
-      const result = await evaluateSingle(sub, angleIndex);
-      setSubmissions(prev => prev.map(s => s.id === id ? {
-        ...s,
-        status: 'completed',
-        generatedFeedback: result,
-        editedFeedback: result,
-        angleIndex
-      } : s));
+      const { feedback, problemCluster } = await evaluateSingle(sub, angleIndex);
+      
+      const updatedStudents = { ...database.students };
+      if (updatedStudents[studentKey]) {
+        updatedStudents[studentKey].submissions[activeTurnus] = {
+          ...sub,
+          status: 'completed',
+          generatedFeedback: feedback,
+          editedFeedback: feedback,
+          problemCluster,
+          angleIndex
+        };
+        await persistDatabase({ ...database, students: updatedStudents });
+      }
     } catch (err: any) {
-      setSubmissions(prev => prev.map(s => s.id === id ? {
-        ...s,
-        status: 'error',
-        errorMessage: err.message || 'Auswertungsfehler'
-      } : s));
+      alert(`Fehler: ${err.message}`);
     } finally {
       setIsRegeneratingSingle(false);
     }
   };
 
-  // Start Batch Evaluation for all pending submissions
-  const handleStartBatch = async () => {
-    const pendingList = submissions.filter(s => s.status === 'pending');
-    if (pendingList.length === 0) return;
+  // Selective Batch Evaluation
+  const handleStartBatchSelected = async () => {
+    const listToProcess = currentTurnusSubmissions.filter(s => selectedSubIds.includes(s.id));
+    if (listToProcess.length === 0) return;
 
     cancelBatchRef.current = false;
     setBatchProgress({
-      total: pendingList.length,
+      total: listToProcess.length,
       current: 0,
-      currentStudentName: pendingList[0].studentName,
-      currentStepText: 'Initialisiere Stapelauswertung...',
+      currentStudentName: listToProcess[0].studentName,
+      currentStepText: 'Starte selektive Stapelverarbeitung...',
       isProcessing: true,
       isPaused: false,
       errorsCount: 0
     });
 
-    for (let i = 0; i < pendingList.length; i++) {
+    let currentDb = { ...database };
+
+    for (let i = 0; i < listToProcess.length; i++) {
       if (cancelBatchRef.current) break;
 
-      const currentSub = pendingList[i];
+      const currentSub = listToProcess[i];
       setBatchProgress(prev => ({
         ...prev,
         current: i,
@@ -206,41 +342,39 @@ export const App: React.FC = () => {
         currentStepText: 'Lese Abgabe ein...'
       }));
 
-      // Set item to processing
-      setSubmissions(prev => prev.map(s => s.id === currentSub.id ? { ...s, status: 'processing' } : s));
+      const studentKey = currentSub.moodleId || currentSub.studentName.toLowerCase().replace(/\s+/g, '_');
 
       try {
-        // Diverse angle index per student
         const angleIndex = i;
-        const feedback = await evaluateSingle(currentSub, angleIndex, (stepText) => {
+        const { feedback, problemCluster } = await evaluateSingle(currentSub, angleIndex, (stepText) => {
           setBatchProgress(prev => ({ ...prev, currentStepText: stepText }));
         });
 
-        setSubmissions(prev => prev.map(s => s.id === currentSub.id ? {
-          ...s,
-          status: 'completed',
-          generatedFeedback: feedback,
-          editedFeedback: feedback,
-          angleIndex
-        } : s));
+        if (currentDb.students[studentKey]) {
+          currentDb.students[studentKey].submissions[activeTurnus] = {
+            ...currentSub,
+            status: 'completed',
+            generatedFeedback: feedback,
+            editedFeedback: feedback,
+            problemCluster,
+            angleIndex
+          };
+          await saveDatabase(currentDb);
+          setDatabase({ ...currentDb });
+        }
       } catch (err: any) {
         setBatchProgress(prev => ({ ...prev, errorsCount: prev.errorsCount + 1 }));
-        setSubmissions(prev => prev.map(s => s.id === currentSub.id ? {
-          ...s,
-          status: 'error',
-          errorMessage: err.message || 'Auswertungsfehler'
-        } : s));
       }
 
-      setBatchProgress(prev => ({ ...prev, current: i + 1, currentStepText: 'Abgabe abgeschlossen ✓' }));
+      setBatchProgress(prev => ({ ...prev, current: i + 1, currentStepText: 'Abgabe fertiggestellt ✓' }));
 
-      // Rate limit delay between items to stay well within 15 RPM
-      if (i < pendingList.length - 1 && !cancelBatchRef.current) {
+      // Safe Free-Tier Delay (4,5 Sekunden = max. 13 RPM)
+      if (i < listToProcess.length - 1 && !cancelBatchRef.current) {
         const delaySec = Math.max(1, settings.rateLimitDelaySeconds);
         for (let s = delaySec; s > 0; s--) {
           if (cancelBatchRef.current) break;
           setRateLimitSecondsLeft(s);
-          setBatchProgress(prev => ({ ...prev, currentStepText: `⏳ Free-Tier Pause: Nächste Abgabe in ${s}s...` }));
+          setBatchProgress(prev => ({ ...prev, currentStepText: `⏳ Free-Tier Pause: Nächste Abgabe in ${s}s (Safe 13 RPM)...` }));
           await new Promise(r => setTimeout(r, 1000));
         }
         setRateLimitSecondsLeft(0);
@@ -256,21 +390,76 @@ export const App: React.FC = () => {
     setRateLimitSecondsLeft(0);
   };
 
-  // Feedback Edit
-  const handleUpdateFeedback = (id: string, newFeedback: string) => {
-    setSubmissions(prev => prev.map(s => s.id === id ? { ...s, editedFeedback: newFeedback } : s));
+  // Feedback Editing
+  const handleUpdateFeedback = async (id: string, newFeedback: string) => {
+    const sub = currentTurnusSubmissions.find(s => s.id === id);
+    if (!sub) return;
+    const studentKey = sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_');
+
+    const updatedStudents = { ...database.students };
+    if (updatedStudents[studentKey]) {
+      updatedStudents[studentKey].submissions[activeTurnus] = {
+        ...sub,
+        editedFeedback: newFeedback
+      };
+      await persistDatabase({ ...database, students: updatedStudents });
+    }
   };
 
-  // Approve
-  const handleApprove = (id: string) => {
-    setSubmissions(prev => prev.map(s => s.id === id ? {
-      ...s,
-      status: s.status === 'approved' ? 'completed' : 'approved'
-    } : s));
+  // Approve Feedback
+  const handleApprove = async (id: string) => {
+    const sub = currentTurnusSubmissions.find(s => s.id === id);
+    if (!sub) return;
+    const studentKey = sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_');
+
+    const updatedStudents = { ...database.students };
+    if (updatedStudents[studentKey]) {
+      const currentStatus = sub.status;
+      updatedStudents[studentKey].submissions[activeTurnus] = {
+        ...sub,
+        status: currentStatus === 'approved' ? 'completed' : 'approved'
+      };
+      await persistDatabase({ ...database, students: updatedStudents });
+    }
   };
 
-  // Navigation in Split-Screen
-  const filteredSubmissions = submissions.filter(sub => {
+  // Semester Summary Feedback Update
+  const handleUpdateSemesterSummary = async (studentId: string, summary: string, approved: boolean) => {
+    const updatedStudents = { ...database.students };
+    if (updatedStudents[studentId]) {
+      updatedStudents[studentId].semesterSummaryFeedback = summary;
+      updatedStudents[studentId].summaryApproved = approved;
+      await persistDatabase({ ...database, students: updatedStudents });
+    }
+  };
+
+  // Jump from Beratungsrunde / Portfolio to a specific submission
+  const handleJumpToSubmission = (studentId: string, turnus: TurnusId) => {
+    setActiveTab(turnus);
+    const sub = database.students[studentId]?.submissions[turnus];
+    if (sub) {
+      setSelectedId(sub.id);
+    }
+  };
+
+  // Database Backup handlers
+  const handleExportBackup = () => {
+    const blob = exportDatabaseToJson(database);
+    triggerFileDownload(blob, `RSP_LTB_Semester_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+  };
+
+  const handleImportBackup = async (file: File) => {
+    try {
+      const imported = await importDatabaseFromJson(file);
+      setDatabase(imported);
+      alert('Semester-Datenbank erfolgreich wiederhergestellt!');
+    } catch (err: any) {
+      alert(`Fehler beim Import: ${err.message}`);
+    }
+  };
+
+  // Filter Submissions
+  const filteredSubmissions = currentTurnusSubmissions.filter(sub => {
     if (filter === 'pending' && sub.status !== 'pending') return false;
     if (filter === 'completed' && sub.status !== 'completed') return false;
     if (filter === 'approved' && sub.status !== 'approved') return false;
@@ -287,7 +476,7 @@ export const App: React.FC = () => {
   });
 
   const selectedIndex = filteredSubmissions.findIndex(s => s.id === selectedId);
-  const selectedSubmission = submissions.find(s => s.id === selectedId) || null;
+  const selectedSubmission = currentTurnusSubmissions.find(s => s.id === selectedId) || null;
 
   const handleNavigate = (direction: 'prev' | 'next') => {
     if (direction === 'prev' && selectedIndex > 0) {
@@ -297,10 +486,9 @@ export const App: React.FC = () => {
     }
   };
 
-  // Keyboard navigation (Arrow keys left/right)
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only navigate if not actively typing in an input/textarea
       if (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT') {
         return;
       }
@@ -314,118 +502,172 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIndex, filteredSubmissions]);
 
+  // Checkbox Selection Toggles
+  const handleToggleSelectSub = (id: string) => {
+    setSelectedSubIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllUnreviewed = () => {
+    const unreviewed = currentTurnusSubmissions
+      .filter(s => s.status === 'pending' || s.status === 'error')
+      .map(s => s.id);
+    setSelectedSubIds(unreviewed);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedSubIds([]);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
       
       {/* Header */}
       <Header
-        submissions={submissions}
+        submissions={currentTurnusSubmissions}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onStartBatch={handleStartBatch}
         onOpenExport={() => setIsExportOpen(true)}
-        onReset={handleReset}
-        isProcessing={batchProgress.isProcessing}
+        onReset={handleResetCurrentTurnus}
+        onExportBackup={handleExportBackup}
+        onImportBackup={handleImportBackup}
+        apiHealth={apiHealth}
+        onCheckApiHealth={runApiHealthCheck}
       />
 
-      {/* Main Content Area */}
+      {/* Main Container */}
       <main className="flex-1 w-full max-w-[2100px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-5 space-y-5">
         
-        {/* If no submissions loaded yet */}
-        {submissions.length === 0 ? (
-          <div className="max-w-4xl mx-auto space-y-6 pt-4">
-            
-            {/* Hero Card */}
-            <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 shadow-xs text-center space-y-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-900 border border-blue-200 text-xs font-semibold">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                Reflexion schulischer Praxis (RSP) · Dozent Tim
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                Lerntagebücher zeitsparend, kriteriengeleitet & individuell auswerten
-              </h2>
-              <p className="text-sm text-slate-600 max-w-2xl mx-auto leading-relaxed">
-                Schluss mit manuellem Copy & Paste zwischen Moodle und KI. Lade die gesammelte ZIP-Datei aus Moodle hoch. Die App maskiert automatisch Namen (DSGVO), variiert den Dozentenstil gegen KI-Gleichklang und generiert differenzierte Rückmeldungen in maximal 10 Sätzen.
-              </p>
-            </div>
+        {/* Turnus Navigation Tabs (LTB 1–6, Beratungsrunde, Semester-Portfolio) */}
+        <TurnusNavigation
+          currentTab={activeTab}
+          onSelectTab={setActiveTab}
+          database={database}
+        />
 
-            {/* Upload Box */}
-            <UploadZone
-              onFilesSelected={handleFilesSelected}
-              isLoading={isUploading}
-              progressText={uploadProgressText}
-            />
+        {/* View 1: Beratungsrunde Dashboard */}
+        {activeTab === 'beratung' && (
+          <BeratungsrundeDashboard
+            database={database}
+            activeTurnus={activeTurnus}
+            onSelectStudent={handleJumpToSubmission}
+          />
+        )}
 
-            {/* Demo / Sample Button */}
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                onClick={handleLoadSamples}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs transition-colors"
-              >
-                <Layers className="w-4 h-4 text-blue-800" />
-                App sofort testen: 3 Beispiel-Lerntagebücher laden
-              </button>
-            </div>
+        {/* View 2: Semester Portfolio View */}
+        {activeTab === 'portfolio' && (
+          <SemesterPortfolioView
+            database={database}
+            settings={settings}
+            onUpdateSummary={handleUpdateSemesterSummary}
+            onJumpToSubmission={handleJumpToSubmission}
+          />
+        )}
 
-          </div>
-        ) : (
-          /* Active Workflow Layout */
-          <div className="space-y-4">
-            
-            {/* Stats & Search */}
-            <StatsBar
-              submissions={submissions}
-              currentFilter={filter}
-              onFilterChange={setFilter}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-            />
+        {/* View 3: Standard Turnus Workbench (LTB 1 to 6) */}
+        {activeTab !== 'beratung' && activeTab !== 'portfolio' && (
+          <>
+            {currentTurnusSubmissions.length === 0 ? (
+              <div className="max-w-4xl mx-auto space-y-6 pt-4">
+                <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 shadow-xs text-center space-y-4">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-900 border border-blue-200 text-xs font-semibold">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    Turnus: {activeTurnus.toUpperCase()} · Inkrementeller Modus aktiv
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                    Moodle-Sammel-ZIP für {activeTurnus.toUpperCase()} hochladen
+                  </h2>
+                  <p className="text-sm text-slate-600 max-w-2xl mx-auto leading-relaxed">
+                    Lade hier die Moodle-ZIP hoch. Bereits zuvor bewertete Studierende werden automatisch geschützt, nur neue Abgaben werden ergänzt und das Seminar-Roster wird synchronisiert.
+                  </p>
+                </div>
 
-            {/* Main Workbench: Split-Screen View */}
-            {selectedSubmission ? (
-              <div className="space-y-4">
-                <SplitScreenWorkspace
-                  submission={selectedSubmission}
-                  settings={settings}
-                  onUpdateFeedback={handleUpdateFeedback}
-                  onApprove={handleApprove}
-                  onRegenerate={handleEvaluateSingle}
-                  onNavigate={handleNavigate}
-                  hasPrev={selectedIndex > 0}
-                  hasNext={selectedIndex < filteredSubmissions.length - 1}
-                  currentIndex={selectedIndex}
-                  totalCount={filteredSubmissions.length}
-                  isRegenerating={isRegeneratingSingle}
+                <UploadZone
+                  onFilesSelected={handleFilesSelected}
+                  isLoading={isUploading}
+                  progressText={uploadProgressText}
                 />
 
-                {/* Submissions Drawer / Mini List */}
-                <div className="pt-2">
-                  <div className="flex items-center justify-between mb-2 px-1">
-                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                      Alle Einreichungen der Gruppe ({submissions.length})
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      Tipp: Wechsle mit den Pfeiltasten links/rechts schnell zwischen Studierenden
-                    </span>
-                  </div>
-                  <SubmissionList
-                    submissions={filteredSubmissions}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
-                    onEvaluateSingle={handleEvaluateSingle}
-                  />
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={handleLoadSamples}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs transition-colors"
+                  >
+                    <Layers className="w-4 h-4 text-blue-800" />
+                    3 Beispiel-Lerntagebücher in {activeTurnus.toUpperCase()} laden
+                  </button>
                 </div>
               </div>
             ) : (
-              <SubmissionList
-                submissions={filteredSubmissions}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                onEvaluateSingle={handleEvaluateSingle}
-              />
-            )}
+              <div className="space-y-4">
+                {/* Stats Bar */}
+                <StatsBar
+                  submissions={currentTurnusSubmissions}
+                  currentFilter={filter}
+                  onFilterChange={setFilter}
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                />
 
-          </div>
+                {/* Split-Screen Workspace */}
+                {selectedSubmission ? (
+                  <div className="space-y-4">
+                    <SplitScreenWorkspace
+                      submission={selectedSubmission}
+                      settings={settings}
+                      onUpdateFeedback={handleUpdateFeedback}
+                      onApprove={handleApprove}
+                      onRegenerate={handleEvaluateSingle}
+                      onNavigate={handleNavigate}
+                      hasPrev={selectedIndex > 0}
+                      hasNext={selectedIndex < filteredSubmissions.length - 1}
+                      currentIndex={selectedIndex}
+                      totalCount={filteredSubmissions.length}
+                      isRegenerating={isRegeneratingSingle}
+                    />
+
+                    {/* Submissions List with Selective Checkboxes */}
+                    <div className="pt-2">
+                      <div className="flex items-center justify-between mb-2 px-1">
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                          Einreichungen in {activeTurnus.toUpperCase()} ({currentTurnusSubmissions.length})
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          Tipp: Wähle per Checkbox gezielt Studierende für den Stapellauf
+                        </span>
+                      </div>
+                      <SubmissionList
+                        submissions={filteredSubmissions}
+                        selectedId={selectedId}
+                        selectedSubIds={selectedSubIds}
+                        onToggleSelectSub={handleToggleSelectSub}
+                        onSelectAllUnreviewed={handleSelectAllUnreviewed}
+                        onDeselectAll={handleDeselectAll}
+                        onSelect={setSelectedId}
+                        onEvaluateSingle={handleEvaluateSingle}
+                        onEvaluateSelected={handleStartBatchSelected}
+                        isBatchRunning={batchProgress.isProcessing}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <SubmissionList
+                    submissions={filteredSubmissions}
+                    selectedId={selectedId}
+                    selectedSubIds={selectedSubIds}
+                    onToggleSelectSub={handleToggleSelectSub}
+                    onSelectAllUnreviewed={handleSelectAllUnreviewed}
+                    onDeselectAll={handleDeselectAll}
+                    onSelect={setSelectedId}
+                    onEvaluateSingle={handleEvaluateSingle}
+                    onEvaluateSelected={handleStartBatchSelected}
+                    isBatchRunning={batchProgress.isProcessing}
+                  />
+                )}
+              </div>
+            )}
+          </>
         )}
 
       </main>
@@ -442,7 +684,7 @@ export const App: React.FC = () => {
       <ExportModal
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
-        submissions={submissions}
+        submissions={currentTurnusSubmissions}
       />
 
       {/* Batch Progress Modal */}
@@ -451,6 +693,18 @@ export const App: React.FC = () => {
         onCancel={handleCancelBatch}
         rateLimitSecondsLeft={rateLimitSecondsLeft}
       />
+
+      {/* Turnus Confirm Modal */}
+      {uncertainUploadData && (
+        <TurnusConfirmModal
+          isOpen={true}
+          detectedTurnus={uncertainUploadData.detected}
+          onConfirm={(selectedTurnus) => {
+            processUploadFiles(uncertainUploadData.files, selectedTurnus);
+          }}
+          onCancel={() => setUncertainUploadData(null)}
+        />
+      )}
 
     </div>
   );

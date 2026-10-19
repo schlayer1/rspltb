@@ -3,6 +3,8 @@ import { StudentSubmission } from '../types';
 export const SAMPLE_SUBMISSIONS: StudentSubmission[] = [
   {
     id: 'sample_1',
+    moodleId: '184920',
+    turnus: 'ltb1',
     rawFileName: 'Mustermann_Max_184920_assignsubmission_file_/Lerntagebuch_Max_Mustermann.pdf',
     folderPath: 'Mustermann_Max_184920_assignsubmission_file_/Lerntagebuch_Max_Mustermann.pdf',
     studentName: 'Max Mustermann',
@@ -23,10 +25,16 @@ Am Mittwoch durfte ich eine eigene Einstiegssequenz zum Thema Balladen halten. I
     pseudonym: 'Studierende/r #1',
     status: 'pending',
     generatedFeedback: '',
-    editedFeedback: ''
+    editedFeedback: '',
+    problemCluster: {
+      category: 'Unterrichtsstörungen & Disziplin',
+      snippet: 'Kippender Stuhl und Provokation in Klasse 7: Diskrepanz zwischen theoretischem Blickkontakt und notwendiger Frontalintervention.'
+    }
   },
   {
     id: 'sample_2',
+    moodleId: '192841',
+    turnus: 'ltb1',
     rawFileName: 'Schmidt_Sophie_192841_assignsubmission_file_/LTB_Sophie_Schmidt.docx',
     folderPath: 'Schmidt_Sophie_192841_assignsubmission_file_/LTB_Sophie_Schmidt.docx',
     studentName: 'Sophie Schmidt',
@@ -44,10 +52,16 @@ Für meine eigene Lehrerpersönlichkeit nehme ich mit, dass Beziehungsarbeit imm
     pseudonym: 'Studierende/r #2',
     status: 'pending',
     generatedFeedback: '',
-    editedFeedback: ''
+    editedFeedback: '',
+    problemCluster: {
+      category: 'Beziehungsarbeit & Deeskalation',
+      snippet: 'Wutausbruch eines Förderkindes nach zerrissenem Arbeitsblatt: Auszeit und Augenhöhe statt impulsiver Reglementierung.'
+    }
   },
   {
     id: 'sample_3',
+    moodleId: '178302',
+    turnus: 'ltb1',
     rawFileName: 'Becker_Leon_178302_assignsubmission_file_/Tagebuch_Leon_Becker.pdf',
     folderPath: 'Becker_Leon_178302_assignsubmission_file_/Tagebuch_Leon_Becker.pdf',
     studentName: 'Leon Becker',
@@ -65,6 +79,10 @@ In der Nachbesprechung mit meinem Mentor reflektierten wir, dass forschendes Ler
     pseudonym: 'Studierende/r #3',
     status: 'pending',
     generatedFeedback: '',
-    editedFeedback: ''
+    editedFeedback: '',
+    problemCluster: {
+      category: 'Didaktische Planung vs. Realität',
+      snippet: 'Chaotisches Schülerexperiment mit Laserpointern in Klasse 8: Überforderung durch fehlende kleinschrittige Vorstrukturierung.'
+    }
   }
 ];

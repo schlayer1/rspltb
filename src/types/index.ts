@@ -1,8 +1,17 @@
+export type TurnusId = 'ltb1' | 'ltb2' | 'ltb3' | 'ltb4' | 'ltb5' | 'ltb6';
+
+export interface ProblemCluster {
+  category: string; // e.g. "Unterrichtsstörungen & Disziplin", "Raumpräsenz & Körpersprache", "Deeskalation & Beziehungsarbeit", "Differenzierung & Lerntempo", "Rollenwechsel & Autorität"
+  snippet: string; // 1-sentence concrete case description from student text
+}
+
 export interface StudentSubmission {
   id: string;
+  moodleId: string; // e.g. "1546331" from "Arthur Mika_1546331_assignsubmission_file"
+  studentName: string; // e.g. "Arthur Mika"
+  turnus: TurnusId;
   rawFileName: string;
   folderPath: string; // Original Moodle folder path for ZIP reconstruction
-  studentName: string; // Extracted student name
   fileType: 'pdf' | 'docx' | 'txt' | 'other';
   rawText: string;
   wordCount: number;
@@ -10,10 +19,26 @@ export interface StudentSubmission {
   status: 'pending' | 'processing' | 'completed' | 'approved' | 'error';
   generatedFeedback: string;
   editedFeedback: string;
+  problemCluster?: ProblemCluster;
   errorMessage?: string;
   angleIndex?: number;
   timestamp?: number;
   originalFileBlob?: Blob;
+}
+
+export interface StudentProfile {
+  id: string; // usually moodleId or normalized student name
+  moodleId: string;
+  fullName: string;
+  submissions: Partial<Record<TurnusId, StudentSubmission>>;
+  semesterSummaryFeedback?: string;
+  summaryApproved?: boolean;
+}
+
+export interface SeminarDatabase {
+  students: Record<string, StudentProfile>; // keyed by moodleId or name
+  activeTurnus: TurnusId;
+  lastUpdated: number;
 }
 
 export type FeedbackTone = 'appreciative' | 'collegial_reflective' | 'didactic_focus';
@@ -29,12 +54,11 @@ export interface EvaluationSettings {
   tone: FeedbackTone;
   signOff: string;
   rateLimitDelaySeconds: number;
-  // Specific seminar criteria checkboxes
   criteria: {
-    observeAction: boolean; // Schilderung konkreter Unterrichtsmomente
-    selfReflection: boolean; // Reflexion der eigenen Rolle / Lehrer-Schüler-Interaktion
-    theoryPractice: boolean; // Brückenschlag Theorie vs. Praxis
-    constructivePerspective: boolean; // Konstruktiver Ausblick für das weitere Lehramtsstudium
+    observeAction: boolean;
+    selfReflection: boolean;
+    theoryPractice: boolean;
+    constructivePerspective: boolean;
   };
 }
 
