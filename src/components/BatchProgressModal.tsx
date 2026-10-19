@@ -68,13 +68,20 @@ export const BatchProgressModal: React.FC<BatchProgressModalProps> = ({
         </div>
 
         {/* Current Info */}
-        <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-2 text-xs">
+        <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-2.5 text-xs">
           <div className="flex items-center justify-between text-slate-600">
             <span>Aktuelle Abgabe:</span>
             <span className="font-semibold text-slate-900 truncate max-w-[200px]">
               {progress.currentStudentName || 'Wird vorbereitet...'}
             </span>
           </div>
+
+          {progress.currentStepText && (
+            <div className="p-2 rounded-lg bg-blue-50/80 border border-blue-200 text-blue-900 font-medium flex items-center gap-2 animate-fadeIn">
+              <div className="w-2 h-2 rounded-full bg-blue-700 animate-ping shrink-0" />
+              <span className="truncate">{progress.currentStepText}</span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between text-slate-600">
             <span>Geschätzte Restzeit:</span>

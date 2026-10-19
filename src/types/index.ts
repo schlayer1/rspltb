@@ -42,6 +42,8 @@ export interface ProcessingProgress {
   total: number;
   current: number;
   currentStudentName: string;
+  currentStepText?: string;
+  activeAngleName?: string;
   isProcessing: boolean;
   isPaused: boolean;
   errorsCount: number;

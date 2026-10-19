@@ -77,7 +77,8 @@ let cachedWorkingModel = CANDIDATE_FLASH_MODELS[0];
 export async function evaluateSubmissionText(
   rawText: string,
   settings: EvaluationSettings,
-  angleIndex: number
+  angleIndex: number,
+  onStep?: (step: string) => void
 ): Promise<{ feedback: string; usedModel: string }> {
   const activeKey = getActiveApiKey(settings.apiKey);
   if (!activeKey) {
@@ -85,6 +86,10 @@ export async function evaluateSubmissionText(
   }
 
   const angle = DIVERSITY_ANGLES[angleIndex % DIVERSITY_ANGLES.length];
+
+  if (onStep) {
+    onStep(`Fokus: „${angle.name}“ vorbereiten...`);
+  }
 
   // Build the rich diversified prompt
   const promptLines: string[] = [];
@@ -130,6 +135,10 @@ export async function evaluateSubmissionText(
   for (const model of modelsToTry) {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
 
+    if (onStep) {
+      onStep(`Übermittle an Gemini (${model})...`);
+    }
+
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -137,20 +146,37 @@ export async function evaluateSubmissionText(
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
           generationConfig: {
-            temperature: 0.7, // Higher temperature for stylistic naturalness and diversity
+            temperature: 0.7,
             topP: 0.95,
-            maxOutputTokens: 2048
+            maxOutputTokens: 8192 // 8192 tokens provides ample headroom for thinking tokens + full text
           }
         })
       });
 
       if (response.ok) {
+        if (onStep) {
+          onStep('Dozenten-Feedback wird verarbeitet...');
+        }
+
         const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text && text.trim().length > 20) {
+        const candidate = data.candidates?.[0];
+        
+        // Discard truncated responses if model prematurely ran out of tokens
+        if (candidate?.finishReason === 'MAX_TOKENS') {
+          lastError = `Modell ${model} hat Tokenlimit erreicht (finishReason: MAX_TOKENS)`;
+          continue;
+        }
+
+        const parts = candidate?.content?.parts || [];
+        const text = parts.map((p: any) => p.text || '').join('').trim();
+
+        if (text && text.length > 20) {
           cachedWorkingModel = model;
+          if (onStep) {
+            onStep('Prüfe Anti-KI Kriterien & Signatur...');
+          }
           return {
-            feedback: text.trim(),
+            feedback: text,
             usedModel: model
           };
         }
@@ -158,7 +184,6 @@ export async function evaluateSubmissionText(
         const errJson = await response.json().catch(() => null);
         const errMsg = errJson?.error?.message || response.statusText;
         lastError = `Modell ${model} [${response.status}]: ${errMsg}`;
-        // If 429 or 503 or 404, cascade to next candidate
       }
     } catch (err: any) {
       lastError = `Netzwerkfehler bei ${model}: ${err.message || String(err)}`;

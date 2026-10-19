@@ -123,20 +123,26 @@ export const App: React.FC = () => {
   };
 
   // Evaluate a single submission
-  const evaluateSingle = async (sub: StudentSubmission, angleIndex: number = 0): Promise<string> => {
+  const evaluateSingle = async (
+    sub: StudentSubmission, 
+    angleIndex: number = 0,
+    onStep?: (step: string) => void
+  ): Promise<string> => {
     let textToSend = sub.rawText;
     const pseudonym = sub.pseudonym || 'Studierende/r';
 
     // 1. DSGVO Masking
     if (settings.pseudonymize) {
+      if (onStep) onStep('🔒 Maskiere persönliche Daten & Namen (DSGVO)...');
       const { maskedText } = pseudonymizeText(textToSend, sub.studentName, pseudonym);
       textToSend = maskedText;
     }
 
-    // 2. Call Gemini API Cascade
-    const { feedback } = await evaluateSubmissionText(textToSend, settings, angleIndex);
+    // 2. Call Gemini API Cascade with 8192 tokens & finishReason check
+    const { feedback } = await evaluateSubmissionText(textToSend, settings, angleIndex, onStep);
 
     // 3. Restore Personal Name
+    if (onStep) onStep(`✨ Setze persönliche Ansprache für ${sub.studentName.split(' ')[0]} ein...`);
     let finalFeedback = feedback;
     if (settings.pseudonymize) {
       finalFeedback = restorePersonalFeedback(feedback, sub.studentName, pseudonym);
@@ -182,7 +188,8 @@ export const App: React.FC = () => {
     setBatchProgress({
       total: pendingList.length,
       current: 0,
-      currentStudentName: '',
+      currentStudentName: pendingList[0].studentName,
+      currentStepText: 'Initialisiere Stapelauswertung...',
       isProcessing: true,
       isPaused: false,
       errorsCount: 0
@@ -195,7 +202,8 @@ export const App: React.FC = () => {
       setBatchProgress(prev => ({
         ...prev,
         current: i,
-        currentStudentName: currentSub.studentName
+        currentStudentName: currentSub.studentName,
+        currentStepText: 'Lese Abgabe ein...'
       }));
 
       // Set item to processing
@@ -204,7 +212,9 @@ export const App: React.FC = () => {
       try {
         // Diverse angle index per student
         const angleIndex = i;
-        const feedback = await evaluateSingle(currentSub, angleIndex);
+        const feedback = await evaluateSingle(currentSub, angleIndex, (stepText) => {
+          setBatchProgress(prev => ({ ...prev, currentStepText: stepText }));
+        });
 
         setSubmissions(prev => prev.map(s => s.id === currentSub.id ? {
           ...s,
@@ -222,7 +232,7 @@ export const App: React.FC = () => {
         } : s));
       }
 
-      setBatchProgress(prev => ({ ...prev, current: i + 1 }));
+      setBatchProgress(prev => ({ ...prev, current: i + 1, currentStepText: 'Abgabe abgeschlossen ✓' }));
 
       // Rate limit delay between items to stay well within 15 RPM
       if (i < pendingList.length - 1 && !cancelBatchRef.current) {
@@ -230,13 +240,14 @@ export const App: React.FC = () => {
         for (let s = delaySec; s > 0; s--) {
           if (cancelBatchRef.current) break;
           setRateLimitSecondsLeft(s);
+          setBatchProgress(prev => ({ ...prev, currentStepText: `⏳ Free-Tier Pause: Nächste Abgabe in ${s}s...` }));
           await new Promise(r => setTimeout(r, 1000));
         }
         setRateLimitSecondsLeft(0);
       }
     }
 
-    setBatchProgress(prev => ({ ...prev, isProcessing: false }));
+    setBatchProgress(prev => ({ ...prev, isProcessing: false, currentStepText: '' }));
   };
 
   const handleCancelBatch = () => {
