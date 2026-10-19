@@ -139,7 +139,11 @@ Da alle Daten lokal im Browser gespeichert werden:
 
 ## 🛠️ Versions-Historie & Changelog
 
-### Version 1.9.0 (Aktuell)
+### Version 1.9.1 (Aktuell)
+* **iOS Safe-Area & Notch-Korrektur**: Dynamisches `env(safe-area-inset-top)`-Padding im Header. Bedienelemente werden auf dem iPhone im Vollbildmodus und in Safari zuverlässig unterhalb von Dynamic Island, Notch, Uhrzeit und Akkuanzeige platziert, ohne dass Systemanzeigen den Header verdecken.
+* **Optimierte PWA-Statusleiste**: Hoher Kontrast für iOS-Systemsymbole (Uhr, Akku, WLAN) über hellem Header (`status-bar-style: default`).
+
+### Version 1.9.0
 * **Kompakter Mobile-Header**: Schlankes 2-Zeilen-Layout für Smartphones und iPad-Portrait (Höhe von ~220px auf ~75px reduziert, über 60 % Platzersparnis).
 * **Interaktives Dozierenden-Handbuch**: Integriertes Readme-Modal mit 4 Tabs (Leitfaden, Changelog, Didaktik, Shortcuts) und Schnellsuchfunktion.
 * **Archiv-Banner**: Dezenter Hinweis beim Betrachten früherer Semester inklusive 1-Klick-Rückkehr zum aktuellen Semester.

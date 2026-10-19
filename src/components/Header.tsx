@@ -58,8 +58,13 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-      <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 py-2 sm:py-3.5">
+    <header 
+      className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs"
+      style={{
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.35rem)'
+      }}
+    >
+      <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 py-1.5 sm:py-3.5">
         
         {/* DESKTOP VIEW (md:flex, hidden on mobile) */}
         <div className="hidden md:flex items-center justify-between gap-4">

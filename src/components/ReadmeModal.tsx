@@ -252,7 +252,21 @@ export const ReadmeModal: React.FC<ReadmeModalProps> = ({ isOpen, onClose }) => 
                 
                 <div>
                   <span className="px-2 py-0.5 rounded-full bg-[#002f5d] text-white text-[10px] font-bold">
-                    v1.9.0 · Aktuell
+                    v1.9.1 · Aktuell
+                  </span>
+                  <h4 className="font-bold text-slate-900 text-sm mt-1">
+                    iOS Safe-Area Inset & Notch-Korrektur
+                  </h4>
+                  <ul className="text-xs text-slate-600 list-disc list-inside mt-1 space-y-0.5">
+                    <li>Dynamisches <code>env(safe-area-inset-top)</code>-Padding: Header wird auf dem iPhone im Vollbildmodus und in Safari exakt unterhalb von Dynamic Island, Notch, Uhr und Akkuanzeige platziert.</li>
+                    <li>Kein Verdecken von Buttons, Logo oder Semesterauswahl mehr durch Systemanzeigen.</li>
+                    <li>Kontrastoptimierte Statusleiste (<code>status-bar-style: default</code>).</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
+                    v1.9.0
                   </span>
                   <h4 className="font-bold text-slate-900 text-sm mt-1">
                     Kompakter Mobile-Header & Interaktives In-App Dozierenden-Handbuch
