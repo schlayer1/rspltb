@@ -65,12 +65,12 @@ export function detectTurnusFromPath(
   const lower = path.toLowerCase();
 
   const patterns: [RegExp, TurnusId][] = [
-    [/ltb[-_\s]*1\b|lerntagebuch[-_\s]*1\b|abgabe[-_\s]*1\b/i, 'ltb1'],
-    [/ltb[-_\s]*2\b|lerntagebuch[-_\s]*2\b|abgabe[-_\s]*2\b/i, 'ltb2'],
-    [/ltb[-_\s]*3\b|lerntagebuch[-_\s]*3\b|abgabe[-_\s]*3\b/i, 'ltb3'],
-    [/ltb[-_\s]*4\b|lerntagebuch[-_\s]*4\b|abgabe[-_\s]*4\b/i, 'ltb4'],
-    [/ltb[-_\s]*5\b|lerntagebuch[-_\s]*5\b|abgabe[-_\s]*5\b/i, 'ltb5'],
-    [/ltb[-_\s]*6\b|lerntagebuch[-_\s]*6\b|abgabe[-_\s]*6\b/i, 'ltb6']
+    [/ltb[-_\s]*1\b|lerntagebuch[-_\s]*1\b|abgabe[-_\s]*1\b|turnus[-_\s]*1\b|\bltb1\b/i, 'ltb1'],
+    [/ltb[-_\s]*2\b|lerntagebuch[-_\s]*2\b|abgabe[-_\s]*2\b|turnus[-_\s]*2\b|\bltb2\b/i, 'ltb2'],
+    [/ltb[-_\s]*3\b|lerntagebuch[-_\s]*3\b|abgabe[-_\s]*3\b|turnus[-_\s]*3\b|\bltb3\b/i, 'ltb3'],
+    [/ltb[-_\s]*4\b|lerntagebuch[-_\s]*4\b|abgabe[-_\s]*4\b|turnus[-_\s]*4\b|\bltb4\b/i, 'ltb4'],
+    [/ltb[-_\s]*5\b|lerntagebuch[-_\s]*5\b|abgabe[-_\s]*5\b|turnus[-_\s]*5\b|\bltb5\b/i, 'ltb5'],
+    [/ltb[-_\s]*6\b|lerntagebuch[-_\s]*6\b|abgabe[-_\s]*6\b|turnus[-_\s]*6\b|\bltb6\b/i, 'ltb6']
   ];
 
   for (const [regex, turnus] of patterns) {
@@ -208,6 +208,12 @@ async function scanEntry(entry: any, currentPath: string, results: { file: File;
   }
 }
 
+export interface ParseResult {
+  submissions: StudentSubmission[];
+  hasUncertainTurnus: boolean;
+  conflictingTurnus?: TurnusId;
+}
+
 /**
  * Parses a list of files with their relative folder paths (from dropped folders or <input webkitdirectory />)
  */
@@ -215,18 +221,38 @@ export async function parseFolderFileList(
   fileItems: { file: File; relativePath: string }[],
   targetTurnus: TurnusId = 'ltb1',
   onProgress?: (loaded: number, total: number, currentName: string) => void
-): Promise<{ submissions: StudentSubmission[]; hasUncertainTurnus: boolean }> {
+): Promise<ParseResult> {
   const submissions: StudentSubmission[] = [];
   let hasUncertainTurnus = false;
+  let conflictingTurnus: TurnusId | undefined;
 
-  // Filter valid document files
+  // 1. Process any nested .zip files (e.g. Moodle zip inside dropped folder or student zip submissions)
+  const zipItems = fileItems.filter(item => {
+    const lower = item.relativePath.toLowerCase();
+    if (lower.includes('__macosx') || lower.includes('.ds_store')) return false;
+    return lower.endsWith('.zip');
+  });
+
+  for (const zipItem of zipItems) {
+    try {
+      const zipRes = await parseZipArchive(zipItem.file, targetTurnus, onProgress);
+      submissions.push(...zipRes.submissions);
+      if (zipRes.conflictingTurnus) {
+        conflictingTurnus = zipRes.conflictingTurnus;
+      }
+    } catch (e) {
+      console.warn('Fehler beim Entpacken von Unter-Archiv:', e);
+    }
+  }
+
+  // 2. Filter valid document files (.pdf, .docx, .txt)
   const valid = fileItems.filter(item => {
     const lower = item.relativePath.toLowerCase();
     if (lower.includes('__macosx') || lower.includes('.ds_store')) return false;
     return lower.endsWith('.pdf') || lower.endsWith('.docx') || lower.endsWith('.txt');
   });
 
-  let counter = 1;
+  let counter = submissions.length + 1;
   for (let i = 0; i < valid.length; i++) {
     const { file, relativePath } = valid[i];
     const fileName = relativePath.split('/').pop() || file.name;
@@ -239,6 +265,8 @@ export async function parseFolderFileList(
     const { detectedTurnus, isConfident } = detectTurnusFromPath(relativePath, targetTurnus);
     if (!isConfident) {
       hasUncertainTurnus = true;
+    } else if (detectedTurnus !== targetTurnus) {
+      conflictingTurnus = detectedTurnus;
     }
 
     const moodleId = extractMoodleIdFromPath(relativePath);
@@ -300,7 +328,7 @@ export async function parseFolderFileList(
     }
   }
 
-  return { submissions, hasUncertainTurnus };
+  return { submissions, hasUncertainTurnus, conflictingTurnus };
 }
 
 /**
@@ -310,11 +338,12 @@ export async function parseZipArchive(
   zipFile: File,
   targetTurnus: TurnusId = 'ltb1',
   onProgress?: (loaded: number, total: number, currentName: string) => void
-): Promise<{ submissions: StudentSubmission[]; hasUncertainTurnus: boolean }> {
+): Promise<ParseResult> {
   const zip = new JSZip();
   const loadedZip = await zip.loadAsync(zipFile);
   const submissions: StudentSubmission[] = [];
   let hasUncertainTurnus = false;
+  let conflictingTurnus: TurnusId | undefined;
 
   const validEntries: { path: string; file: JSZip.JSZipObject }[] = [];
   loadedZip.forEach((relativePath, zipEntry) => {
@@ -340,6 +369,8 @@ export async function parseZipArchive(
     const { detectedTurnus, isConfident } = detectTurnusFromPath(path, targetTurnus);
     if (!isConfident) {
       hasUncertainTurnus = true;
+    } else if (detectedTurnus !== targetTurnus) {
+      conflictingTurnus = detectedTurnus;
     }
 
     const moodleId = extractMoodleIdFromPath(path);
@@ -401,7 +432,7 @@ export async function parseZipArchive(
     }
   }
 
-  return { submissions, hasUncertainTurnus };
+  return { submissions, hasUncertainTurnus, conflictingTurnus };
 }
 
 /**
@@ -411,7 +442,7 @@ export async function parseDirectFiles(
   files: File[],
   targetTurnus: TurnusId = 'ltb1',
   onProgress?: (loaded: number, total: number, currentName: string) => void
-): Promise<{ submissions: StudentSubmission[]; hasUncertainTurnus: boolean }> {
+): Promise<ParseResult> {
   const fileItems = files.map(f => ({
     file: f,
     relativePath: f.webkitRelativePath || f.name

@@ -79,8 +79,8 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         onDrop={handleDrop}
         className={`relative border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center transition-all ${
           isDragOver
-            ? 'border-blue-600 bg-blue-50/80 scale-[1.005]'
-            : 'border-slate-300 hover:border-blue-500 bg-white hover:bg-slate-50/60 shadow-xs'
+            ? 'border-[#002f5d] bg-[#002f5d]/5 scale-[1.005]'
+            : 'border-slate-300 hover:border-[#002f5d]/60 bg-white hover:bg-slate-50/60 shadow-xs'
         }`}
       >
         {/* Hidden File Input for ZIPs / Documents */}
@@ -109,12 +109,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
 
         <div className="max-w-xl mx-auto flex flex-col items-center">
           <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-colors ${
-            isDragOver ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-900 border border-blue-100'
+            isDragOver ? 'bg-[#002f5d] text-white' : 'bg-[#002f5d]/10 text-[#002f5d] border border-[#002f5d]/15'
           }`}>
             {isLoading ? (
-              <div className="w-8 h-8 border-3 border-blue-900 border-t-transparent rounded-full animate-spin" />
+              <div className="w-8 h-8 border-3 border-[#002f5d] border-t-transparent rounded-full animate-spin" />
             ) : (
-              <UploadCloud className="w-8 h-8" />
+              <UploadCloud className="w-8 h-8 text-[#002f5d]" />
             )}
           </div>
 
@@ -134,9 +134,9 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
               type="button"
               disabled={isLoading}
               onClick={() => folderInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-blue-900 hover:bg-blue-800 text-white shadow-xs transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#002f5d] hover:bg-[#001f3f] text-white shadow-xs transition-colors"
             >
-              <FolderDown className="w-4 h-4 text-amber-400" />
+              <FolderDown className="w-4 h-4 text-[#cfbe88]" />
               <span>Ganzen Ordner wählen (iMac)</span>
             </button>
 

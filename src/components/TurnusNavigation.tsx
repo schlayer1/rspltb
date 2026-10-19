@@ -57,14 +57,14 @@ export const TurnusNavigation: React.FC<TurnusNavigationProps> = ({
               onClick={() => onSelectTab(t.id)}
               className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 flex items-center gap-1.5 ${
                 isActive
-                  ? 'bg-blue-900 text-white shadow-xs scale-[1.02]'
+                  ? 'bg-[#002f5d] text-white shadow-xs scale-[1.02]'
                   : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/60'
               }`}
             >
               <span>{t.label}</span>
               {count > 0 && (
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  isActive ? 'bg-amber-400 text-slate-900' : 'bg-slate-200 text-slate-700'
+                  isActive ? 'bg-[#ae9a63] text-white' : 'bg-slate-200 text-slate-700'
                 }`}>
                   {count}
                 </span>
@@ -80,15 +80,15 @@ export const TurnusNavigation: React.FC<TurnusNavigationProps> = ({
           onClick={() => onSelectTab('beratung')}
           className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all inline-flex items-center gap-1.5 ${
             currentTab === 'beratung'
-              ? 'bg-amber-500 text-slate-950 shadow-xs font-bold'
-              : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80'
+              ? 'bg-[#ae9a63] text-white shadow-xs font-bold'
+              : 'bg-[#ae9a63]/10 hover:bg-[#ae9a63]/20 text-[#675628] border border-[#ae9a63]/30'
           }`}
           title="Cluster-Übersicht für deine Seminarsitzung"
         >
-          <MessageSquare className="w-3.5 h-3.5 text-amber-950" />
+          <MessageSquare className="w-3.5 h-3.5 text-current" />
           <span>Beratungsrunde</span>
           {countProblemCases() > 0 && (
-            <span className="text-[10px] bg-amber-200 text-amber-950 font-bold px-1.5 py-0.2 rounded-full">
+            <span className="text-[10px] bg-[#ae9a63]/30 text-[#4c3f1d] font-bold px-1.5 py-0.2 rounded-full">
               {countProblemCases()}
             </span>
           )}
@@ -98,15 +98,15 @@ export const TurnusNavigation: React.FC<TurnusNavigationProps> = ({
           onClick={() => onSelectTab('portfolio')}
           className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all inline-flex items-center gap-1.5 ${
             currentTab === 'portfolio'
-              ? 'bg-indigo-900 text-white shadow-xs'
-              : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80'
+              ? 'bg-[#002f5d] text-white shadow-xs font-bold'
+              : 'bg-[#002f5d]/10 hover:bg-[#002f5d]/15 text-[#002f5d] border border-[#002f5d]/20'
           }`}
           title="Alle Seminarteilnehmer & Gesamtfeedback"
         >
-          <Users className="w-3.5 h-3.5 text-indigo-600" />
+          <Users className="w-3.5 h-3.5 text-current" />
           <span>Semester-Portfolio</span>
           {totalStudents > 0 && (
-            <span className="text-[10px] bg-indigo-200 text-indigo-950 font-bold px-1.5 py-0.2 rounded-full">
+            <span className="text-[10px] bg-[#002f5d]/20 text-[#002f5d] font-bold px-1.5 py-0.2 rounded-full">
               {totalStudents}
             </span>
           )}

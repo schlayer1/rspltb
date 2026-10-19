@@ -175,14 +175,15 @@ export const App: React.FC = () => {
   // Upload handler with incremental sync (supports unpacked folders, ZIPs, and individual documents)
   const processUploadFiles = async (
     rawInput: { file: File; relativePath: string }[] | FileList | File[],
-    targetTurnus: TurnusId
+    targetTurnus: TurnusId,
+    forceTurnus: boolean = false
   ) => {
     setIsUploading(true);
     setUploadProgressText('Dateien werden eingelesen...');
 
     try {
       let parsedSubmissions: StudentSubmission[] = [];
-      let hasUncertain = false;
+      let conflictingTurnus: TurnusId | undefined;
 
       // Check if input is an array of scanned folder items
       const isFolderItemList = Array.isArray(rawInput) && rawInput.length > 0 && 'file' in rawInput[0];
@@ -194,7 +195,7 @@ export const App: React.FC = () => {
           setUploadProgressText(`Lese Datei ${curr} von ${total}: ${name}`);
         });
         parsedSubmissions = res.submissions;
-        hasUncertain = res.hasUncertainTurnus;
+        conflictingTurnus = res.conflictingTurnus;
       } else {
         const fileArray = Array.from(rawInput as FileList | File[]);
         const isZip = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.zip');
@@ -205,21 +206,25 @@ export const App: React.FC = () => {
             setUploadProgressText(`Entpacke Datei ${curr} von ${total}: ${name}`);
           });
           parsedSubmissions = res.submissions;
-          hasUncertain = res.hasUncertainTurnus;
+          conflictingTurnus = res.conflictingTurnus;
         } else {
           setUploadProgressText('Dokumente werden ausgelesen...');
           const res = await parseDirectFiles(fileArray, targetTurnus, (curr, total, name) => {
             setUploadProgressText(`Lese Datei ${curr} von ${total}: ${name}`);
           });
           parsedSubmissions = res.submissions;
-          hasUncertain = res.hasUncertainTurnus;
+          conflictingTurnus = res.conflictingTurnus;
         }
       }
 
-      // If uncertain and user dropped from another tab
-      if (hasUncertain && !uncertainUploadData && parsedSubmissions.length > 0) {
-        setUncertainUploadData({ items: rawInput, detected: targetTurnus });
-        setIsUploading(false);
+      if (parsedSubmissions.length === 0) {
+        alert('Keine gültigen Lerntagebuch-Dokumente (.pdf, .docx, .txt) in der Auswahl gefunden.');
+        return;
+      }
+
+      // Check if there is a true conflict between detected Turnus and targetTurnus
+      if (!forceTurnus && conflictingTurnus && conflictingTurnus !== targetTurnus) {
+        setUncertainUploadData({ items: rawInput, detected: conflictingTurnus });
         return;
       }
 
@@ -237,13 +242,12 @@ export const App: React.FC = () => {
         setSelectedId(parsedSubmissions[0].id);
       }
 
-      alert(`Inkrementeller Moodle-Sync für ${targetTurnus.toUpperCase()} abgeschlossen:\n• ${addedCount} neue Abgaben hinzugefügt\n• ${preservedCount} bereits bewertete Feedbacks geschützt\n• ${updatedCount} aktualisiert`);
+      alert(`Inkrementeller Moodle-Sync für ${targetTurnus.toUpperCase()} erfolgreich abgeschlossen:\n• ${addedCount} neue Abgaben hinzugefügt\n• ${preservedCount} bereits bewertete Feedbacks geschützt\n• ${updatedCount} aktualisiert\nInsgesamt ${Object.keys(updatedDb.students).length} Studierende im Seminar-Roster.`);
     } catch (err: any) {
       alert(`Fehler beim Einlesen: ${err.message || String(err)}`);
     } finally {
       setIsUploading(false);
       setUploadProgressText('');
-      setUncertainUploadData(null);
     }
   };
 
@@ -716,7 +720,9 @@ export const App: React.FC = () => {
           isOpen={true}
           detectedTurnus={uncertainUploadData.detected}
           onConfirm={(selectedTurnus) => {
-            processUploadFiles(uncertainUploadData.items, selectedTurnus);
+            const data = uncertainUploadData.items;
+            setUncertainUploadData(null);
+            processUploadFiles(data, selectedTurnus, true);
           }}
           onCancel={() => setUncertainUploadData(null)}
         />

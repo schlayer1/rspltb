@@ -201,7 +201,7 @@ export const BeratungsrundeDashboard: React.FC<BeratungsrundeDashboardProps> = (
                           {item.turnus.toUpperCase()}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-600 font-serif italic mt-1 leading-relaxed pl-4 border-l-2 border-slate-200 group-hover:border-blue-500">
+                      <p className="text-xs text-slate-600 font-sans italic mt-1 leading-relaxed pl-4 border-l-2 border-[#ae9a63] group-hover:border-[#002f5d]">
                         „{item.snippet}“
                       </p>
                     </div>

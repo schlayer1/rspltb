@@ -51,13 +51,15 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Logo & Titel */}
           <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-900 to-indigo-800 text-amber-400 flex items-center justify-center shadow-xs font-semibold shrink-0">
-              <BookOpen className="w-5 h-5" />
-            </div>
+            <img 
+              src="/icon.svg" 
+              alt="FSU Jena LTB Auswerter" 
+              className="w-10 h-10 rounded-xl shadow-xs shrink-0 object-cover border border-[#002f5d]/10" 
+            />
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                  LTB-Auswerter <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">Uni Jena · ZfL</span>
+                  LTB-Auswerter <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#002f5d]/10 text-[#002f5d] border border-[#002f5d]/20">FSU Jena - ZLB</span>
                 </h1>
                 
                 {/* Discrete API Health Indicator */}
@@ -80,13 +82,13 @@ export const Header: React.FC<HeaderProps> = ({
                       ? 'bg-emerald-500'
                       : 'bg-rose-500'
                   }`} />
-                  <span className="text-[11px]">
-                    {apiHealth.isChecking ? 'Prüfe API...' : apiHealth.ok ? 'Gemini API bereit (13 RPM Safe)' : 'API getrennt'}
+                  <span className="text-[11px] font-medium">
+                    {apiHealth.isChecking ? 'Prüfe API...' : apiHealth.ok ? 'Gemini API' : 'API getrennt'}
                   </span>
                 </button>
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Reflexion schulischer Praxis · Dozent Tim · Inkrementeller Moodle-Sync (LTB 1–6)
+              <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                Reflexion schulischer Praxis
               </p>
             </div>
           </div>

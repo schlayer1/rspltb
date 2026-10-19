@@ -172,7 +172,7 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
             </span>
           </div>
 
-          <div className="flex-1 bg-white border border-slate-200 rounded-xl p-4 overflow-y-auto max-h-[550px] shadow-2xs font-serif text-sm leading-relaxed text-slate-800 whitespace-pre-wrap selection:bg-amber-100">
+          <div className="flex-1 bg-white border border-slate-200 rounded-xl p-4 overflow-y-auto max-h-[550px] shadow-2xs font-sans text-sm leading-relaxed text-slate-800 whitespace-pre-wrap selection:bg-[#ae9a63]/20">
             {submission.rawText || (
               <span className="text-slate-400 italic font-sans">
                 (Kein Text extrahiert oder Dokument war leer.)

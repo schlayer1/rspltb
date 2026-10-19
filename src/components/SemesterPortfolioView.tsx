@@ -177,7 +177,7 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    Lehramtsseminar Reflexion schulischer Praxis (ZfL Uni Jena) · Dozent Tim
+                    Lehramtsseminar Reflexion schulischer Praxis (FSU Jena · ZLB) · Dozent Tim
                   </p>
                 </div>
 

@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient: Deep FSU Dunkelblau -->
+    <linearGradient id="fsuBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#002f5d"/>
+      <stop offset="100%" stop-color="#001a33"/>
+    </linearGradient>
+
+    <!-- FSU Gold Gradient -->
+    <linearGradient id="fsuGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#cfbe88"/>
+      <stop offset="50%" stop-color="#ae9a63"/>
+      <stop offset="100%" stop-color="#8c7843"/>
+    </linearGradient>
+
+    <!-- FSU Lichtblau Gradient -->
+    <linearGradient id="fsuLightBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8cb0ea"/>
+      <stop offset="100%" stop-color="#648bc7"/>
+    </linearGradient>
+
+    <!-- Page Shadow -->
+    <filter id="softShadow" x="-10%" y="-10%" width="125%" height="125%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- App Squircle Base (Apple / Modern PWA Style) -->
+  <rect x="0" y="0" width="512" height="512" rx="114" fill="url(#fsuBg)"/>
+
+  <!-- Subtle inner border for premium crispness -->
+  <rect x="6" y="6" width="500" height="500" rx="108" fill="none" stroke="url(#fsuGold)" stroke-width="3" stroke-opacity="0.25"/>
+
+  <!-- Top Decorative Gold Accent Bar -->
+  <path d="M120 46 L392 46" stroke="url(#fsuGold)" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+
+  <!-- Main Open Journal / Lerntagebuch Symbol -->
+  <g filter="url(#softShadow)" transform="translate(0, 10)">
+    <!-- Left Open Page -->
+    <path d="M256 168 C224 150 160 146 112 154 C98 156 88 168 88 182 L88 344 C88 358 100 370 114 368 C160 360 220 364 256 384 Z" 
+          fill="#fbfbfd" />
+    
+    <!-- Right Open Page -->
+    <path d="M256 168 C288 150 352 146 400 154 C414 156 424 168 424 182 L424 344 C424 358 412 370 398 368 C352 360 292 364 256 384 Z" 
+          fill="#f0f3f8" />
+
+    <!-- Center Spine / Book Fold -->
+    <path d="M256 168 L256 384" stroke="url(#fsuGold)" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Left Page Subtle Lines (Reflective Journal Entries) -->
+    <line x1="130" y1="205" x2="225" y2="205" stroke="#648bc7" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+    <line x1="130" y1="235" x2="220" y2="235" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round" opacity="0.6"/>
+    <line x1="130" y1="265" x2="228" y2="265" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round" opacity="0.6"/>
+    <line x1="130" y1="295" x2="195" y2="295" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round" opacity="0.6"/>
+    <line x1="130" y1="325" x2="215" y2="325" stroke="url(#fsuGold)" stroke-width="4.5" stroke-linecap="round" opacity="0.85"/>
+
+    <!-- Right Page Subtle Lines -->
+    <line x1="287" y1="205" x2="382" y2="205" stroke="#002f5d" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+    <line x1="287" y1="235" x2="378" y2="235" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round" opacity="0.6"/>
+    <line x1="287" y1="265" x2="382" y2="265" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round" opacity="0.6"/>
+    <line x1="287" y1="295" x2="360" y2="295" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round" opacity="0.6"/>
+    <line x1="287" y1="325" x2="340" y2="325" stroke="url(#fsuLightBlue)" stroke-width="4.5" stroke-linecap="round" opacity="0.9"/>
+  </g>
+
+  <!-- Reflection Sparkle / Star of Excellence (FSU Gold) -->
+  <g transform="translate(390, 130)">
+    <path d="M0 -22 Q0 0 22 0 Q0 0 0 22 Q0 0 -22 0 Q0 0 0 -22 Z" fill="url(#fsuGold)"/>
+    <circle cx="0" cy="0" r="4.5" fill="#ffffff"/>
+  </g>
+
+  <!-- Floating Quill / Digital Reflection Element -->
+  <g transform="translate(256, 126)">
+    <circle cx="0" cy="0" r="14" fill="url(#fsuGold)"/>
+    <circle cx="0" cy="0" r="7" fill="#002f5d"/>
+  </g>
+
+  <!-- Bottom Badge: FSU JENA · ZLB -->
+  <g transform="translate(256, 442)">
+    <rect x="-106" y="-18" width="212" height="36" rx="18" fill="#001f3f" stroke="url(#fsuGold)" stroke-width="1.8"/>
+    <text x="0" y="6" text-anchor="middle" font-family="-apple-system, 'Roboto Condensed', 'Roboto', sans-serif" font-weight="700" font-size="16" letter-spacing="2.5" fill="#cfbe88">
+      FSU JENA · ZLB
+    </text>
+  </g>
+</svg>
