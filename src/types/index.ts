@@ -7,7 +7,8 @@ export interface ProblemCluster {
 
 export interface StudentSubmission {
   id: string;
-  moodleId: string; // e.g. "1546331" from "Arthur Mika_1546331_assignsubmission_file"
+  matrikelnummer?: string; // FSU Matrikelnummer e.g. "1546331" from "Arthur Mika_1546331_assignsubmission_file"
+  moodleId: string; // alias for matrikelnummer for backwards compatibility
   studentName: string; // e.g. "Arthur Mika"
   turnus: TurnusId;
   rawFileName: string;
@@ -27,7 +28,8 @@ export interface StudentSubmission {
 }
 
 export interface StudentProfile {
-  id: string; // usually moodleId or normalized student name
+  id: string; // usually matrikelnummer or normalized student name
+  matrikelnummer?: string;
   moodleId: string;
   fullName: string;
   submissions: Partial<Record<TurnusId, StudentSubmission>>;

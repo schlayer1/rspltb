@@ -38,12 +38,12 @@ export async function generateMoodleFeedbackZip(submissions: StudentSubmission[]
  * Includes UTF-8 BOM (\uFEFF) so Excel on Windows & Mac displays German Umlaute flawlessly.
  */
 export function generateFeedbackCsv(submissions: StudentSubmission[]): Blob {
-  const headers = ['ID', 'Studierende/r', 'Original-Datei', 'Wörter', 'Status', 'Feedback von Tim'];
+  const headers = ['Matrikelnummer', 'Studierende/r', 'Original-Datei', 'Wörter', 'Status', 'Feedback von Tim'];
   
   const rows = submissions.map(sub => {
     const feedback = (sub.editedFeedback || sub.generatedFeedback || '').replace(/"/g, '""');
     return [
-      `"${sub.id}"`,
+      `"${sub.matrikelnummer || sub.moodleId || ''}"`,
       `"${sub.studentName}"`,
       `"${sub.rawFileName}"`,
       `"${sub.wordCount}"`,

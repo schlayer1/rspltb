@@ -195,10 +195,12 @@ export const SubmissionList: React.FC<SubmissionListProps> = ({
                     <span className="truncate max-w-[200px] sm:max-w-xs">{sub.rawFileName}</span>
                     <span>•</span>
                     <span>{sub.wordCount} Wörter</span>
-                    {sub.moodleId && (
+                    {(sub.matrikelnummer || sub.moodleId) && (
                       <>
                         <span>•</span>
-                        <span className="text-slate-400 font-mono">ID: {sub.moodleId}</span>
+                        <span className="text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                          Matr.-Nr.: {sub.matrikelnummer || sub.moodleId}
+                        </span>
                       </>
                     )}
                   </p>

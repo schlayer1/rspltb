@@ -98,14 +98,24 @@ export function mergeIncrementalSubmissions(
 
   for (const sub of incomingSubmissions) {
     const subTurnus = sub.turnus || targetTurnus;
-    const studentKey = sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_');
+    const studentMatr = sub.matrikelnummer || sub.moodleId;
+    const studentKey = studentMatr || sub.studentName.toLowerCase().replace(/\s+/g, '_');
 
     let profile: StudentProfile = updatedStudents[studentKey] || {
       id: studentKey,
-      moodleId: sub.moodleId,
+      matrikelnummer: studentMatr,
+      moodleId: studentMatr,
       fullName: sub.studentName,
       submissions: {}
     };
+
+    if (studentMatr) {
+      profile.matrikelnummer = studentMatr;
+      profile.moodleId = studentMatr;
+    }
+    if (sub.studentName) {
+      profile.fullName = sub.studentName;
+    }
 
     const existingSubmission = profile.submissions[subTurnus];
 

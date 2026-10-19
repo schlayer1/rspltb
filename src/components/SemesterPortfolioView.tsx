@@ -43,7 +43,8 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
   const filteredStudents = studentsList.filter(s => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
-    return s.fullName.toLowerCase().includes(q) || s.moodleId.includes(q);
+    const matr = (s.matrikelnummer || s.moodleId || '').toLowerCase();
+    return s.fullName.toLowerCase().includes(q) || matr.includes(q);
   });
 
   const selectedStudent = database.students[selectedStudentId || ''] || filteredStudents[0] || null;
@@ -133,8 +134,8 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
                     <p className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
                       {student.fullName}
                     </p>
-                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      ID: {student.moodleId || 'Moodle-Sync'} • {subCount}/6 Abgaben
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                      Matr.-Nr.: {student.matrikelnummer || student.moodleId || 'Moodle-Sync'} • {subCount}/6 Abgaben
                     </p>
                   </div>
 
@@ -172,8 +173,8 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-bold text-slate-900">{selectedStudent.fullName}</h3>
-                    <span className="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200">
-                      ID: {selectedStudent.moodleId}
+                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-md border border-slate-200">
+                      Matr.-Nr.: {selectedStudent.matrikelnummer || selectedStudent.moodleId}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">

@@ -117,8 +117,15 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
                 </span>
               )}
             </h2>
-            <p className="text-xs text-slate-500">
-              {submission.rawFileName} • {submission.wordCount} Wörter
+            <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+              {(submission.matrikelnummer || submission.moodleId) && (
+                <span className="font-mono bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded border border-slate-200">
+                  Matr.-Nr.: {submission.matrikelnummer || submission.moodleId}
+                </span>
+              )}
+              <span>{submission.rawFileName}</span>
+              <span>•</span>
+              <span>{submission.wordCount} Wörter</span>
             </p>
           </div>
         </div>

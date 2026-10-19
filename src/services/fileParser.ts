@@ -40,18 +40,23 @@ export function extractStudentNameFromPath(path: string): string {
 }
 
 /**
- * Extracts Moodle submission/student ID from directory name
+ * Extracts FSU Matrikelnummer from directory name or file path
+ * Standard Moodle pattern: "{Vorname} {Nachname}_{Matrikelnummer}_assignsubmission_file"
  * e.g. "Arthur Mika_1546331_assignsubmission_file" -> "1546331"
  */
-export function extractMoodleIdFromPath(path: string): string {
-  const match = path.match(/_(\d{5,9})_assignsubmission/i);
+export function extractMatrikelnummerFromPath(path: string): string {
+  const normalized = path.replace(/\\/g, '/');
+  const match = normalized.match(/_(\d{5,9})_assignsubmission/i);
   if (match && match[1]) {
     return match[1];
   }
   // Fallback: search for any 5-8 digit number
-  const numMatch = path.match(/\b(\d{5,8})\b/);
+  const numMatch = normalized.match(/\b(\d{5,8})\b/);
   return numMatch ? numMatch[1] : '';
 }
+
+// Backwards compatibility alias
+export const extractMoodleIdFromPath = extractMatrikelnummerFromPath;
 
 /**
  * Detects which of the 6 turnuses (LTB 1 to 6) a file belongs to based on its name/path.
@@ -245,21 +250,56 @@ export async function parseFolderFileList(
     }
   }
 
-  // 2. Filter valid document files (.pdf, .docx, .txt)
+  // 2. Filter valid document files (.pdf, .docx, .txt), exclude temporary lock files (e.g. ~$...)
   const valid = fileItems.filter(item => {
     const lower = item.relativePath.toLowerCase();
-    if (lower.includes('__macosx') || lower.includes('.ds_store')) return false;
+    if (lower.includes('__macosx') || lower.includes('.ds_store') || lower.includes('/~$') || lower.startsWith('~$')) return false;
     return lower.endsWith('.pdf') || lower.endsWith('.docx') || lower.endsWith('.txt');
   });
 
+  // 3. Group files by student folder (e.g. "Arthur Mika_1546331_assignsubmission_file")
+  const studentFolderMap = new Map<string, { file: File; relativePath: string }[]>();
+
+  for (const item of valid) {
+    const studentName = extractStudentNameFromPath(item.relativePath);
+    const matrikel = extractMatrikelnummerFromPath(item.relativePath);
+    const folderKey = matrikel ? `matr_${matrikel}` : `name_${studentName.toLowerCase().replace(/\s+/g, '_')}`;
+
+    if (!studentFolderMap.has(folderKey)) {
+      studentFolderMap.set(folderKey, []);
+    }
+    studentFolderMap.get(folderKey)!.push(item);
+  }
+
   let counter = submissions.length + 1;
-  for (let i = 0; i < valid.length; i++) {
-    const { file, relativePath } = valid[i];
+  const totalStudents = studentFolderMap.size;
+  let processedStudents = 0;
+
+  for (const [, items] of studentFolderMap.entries()) {
+    processedStudents++;
+    // If student has multiple files in their submission folder, pick the primary document
+    let bestItem = items[0];
+    if (items.length > 1) {
+      const ltbItem = items.find(it => {
+        const n = it.relativePath.toLowerCase();
+        return n.includes('lerntagebuch') || n.includes('ltb') || n.includes('reflexion');
+      });
+      if (ltbItem) {
+        bestItem = ltbItem;
+      } else {
+        bestItem = items.reduce((prev, curr) => curr.file.size > prev.file.size ? curr : prev, items[0]);
+      }
+    }
+
+    const { file, relativePath } = bestItem;
     const fileName = relativePath.split('/').pop() || file.name;
     const lower = fileName.toLowerCase();
 
+    const matrikelnummer = extractMatrikelnummerFromPath(relativePath);
+    const studentName = extractStudentNameFromPath(relativePath);
+
     if (onProgress) {
-      onProgress(i + 1, valid.length, fileName);
+      onProgress(processedStudents, totalStudents, `${studentName} (${fileName})`);
     }
 
     const { detectedTurnus, isConfident } = detectTurnusFromPath(relativePath, targetTurnus);
@@ -268,9 +308,6 @@ export async function parseFolderFileList(
     } else if (detectedTurnus !== targetTurnus) {
       conflictingTurnus = detectedTurnus;
     }
-
-    const moodleId = extractMoodleIdFromPath(relativePath);
-    const studentName = extractStudentNameFromPath(relativePath);
 
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -291,8 +328,9 @@ export async function parseFolderFileList(
       const words = rawText.split(/\s+/).filter(w => w.length > 0).length;
 
       submissions.push({
-        id: `sub_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
-        moodleId,
+        id: `sub_${matrikelnummer || Date.now()}_${detectedTurnus}_${counter}`,
+        matrikelnummer,
+        moodleId: matrikelnummer,
         studentName,
         turnus: detectedTurnus,
         rawFileName: fileName,
@@ -309,8 +347,9 @@ export async function parseFolderFileList(
       counter++;
     } catch (err: any) {
       submissions.push({
-        id: `sub_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
-        moodleId,
+        id: `sub_${matrikelnummer || Date.now()}_${detectedTurnus}_${counter}`,
+        matrikelnummer,
+        moodleId: matrikelnummer,
         studentName,
         turnus: detectedTurnus,
         rawFileName: fileName,
@@ -348,7 +387,7 @@ export async function parseZipArchive(
   const validEntries: { path: string; file: JSZip.JSZipObject }[] = [];
   loadedZip.forEach((relativePath, zipEntry) => {
     if (zipEntry.dir) return;
-    if (relativePath.includes('__MACOSX') || relativePath.includes('.DS_Store')) return;
+    if (relativePath.includes('__MACOSX') || relativePath.includes('.DS_Store') || relativePath.includes('/~$') || relativePath.startsWith('~$')) return;
 
     const lower = relativePath.toLowerCase();
     if (lower.endsWith('.pdf') || lower.endsWith('.docx') || lower.endsWith('.txt')) {
@@ -356,14 +395,45 @@ export async function parseZipArchive(
     }
   });
 
+  // Group valid zip entries by student folder
+  const studentFolderMap = new Map<string, { path: string; file: JSZip.JSZipObject }[]>();
+
+  for (const entry of validEntries) {
+    const studentName = extractStudentNameFromPath(entry.path);
+    const matrikel = extractMatrikelnummerFromPath(entry.path);
+    const folderKey = matrikel ? `matr_${matrikel}` : `name_${studentName.toLowerCase().replace(/\s+/g, '_')}`;
+
+    if (!studentFolderMap.has(folderKey)) {
+      studentFolderMap.set(folderKey, []);
+    }
+    studentFolderMap.get(folderKey)!.push(entry);
+  }
+
   let counter = 1;
-  for (let i = 0; i < validEntries.length; i++) {
-    const { path, file } = validEntries[i];
+  const totalStudents = studentFolderMap.size;
+  let processedStudents = 0;
+
+  for (const [, entries] of studentFolderMap.entries()) {
+    processedStudents++;
+    // Pick primary document if student has multiple files
+    let bestEntry = entries[0];
+    if (entries.length > 1) {
+      const ltbEntry = entries.find(e => {
+        const lower = e.path.toLowerCase();
+        return lower.includes('lerntagebuch') || lower.includes('ltb') || lower.includes('reflexion');
+      });
+      if (ltbEntry) bestEntry = ltbEntry;
+    }
+
+    const { path, file } = bestEntry;
     const fileName = path.split('/').pop() || path;
     const lower = fileName.toLowerCase();
 
+    const matrikelnummer = extractMatrikelnummerFromPath(path);
+    const studentName = extractStudentNameFromPath(path);
+
     if (onProgress) {
-      onProgress(i + 1, validEntries.length, fileName);
+      onProgress(processedStudents, totalStudents, `${studentName} (${fileName})`);
     }
 
     const { detectedTurnus, isConfident } = detectTurnusFromPath(path, targetTurnus);
@@ -372,9 +442,6 @@ export async function parseZipArchive(
     } else if (detectedTurnus !== targetTurnus) {
       conflictingTurnus = detectedTurnus;
     }
-
-    const moodleId = extractMoodleIdFromPath(path);
-    const studentName = extractStudentNameFromPath(path);
 
     try {
       const arrayBuffer = await file.async('arraybuffer');
@@ -395,8 +462,9 @@ export async function parseZipArchive(
       const words = rawText.split(/\s+/).filter(w => w.length > 0).length;
 
       submissions.push({
-        id: `sub_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
-        moodleId,
+        id: `sub_${matrikelnummer || Date.now()}_${detectedTurnus}_${counter}`,
+        matrikelnummer,
+        moodleId: matrikelnummer,
         studentName,
         turnus: detectedTurnus,
         rawFileName: fileName,
@@ -413,8 +481,9 @@ export async function parseZipArchive(
       counter++;
     } catch (err: any) {
       submissions.push({
-        id: `sub_${moodleId || Date.now()}_${detectedTurnus}_${counter}`,
-        moodleId,
+        id: `sub_${matrikelnummer || Date.now()}_${detectedTurnus}_${counter}`,
+        matrikelnummer,
+        moodleId: matrikelnummer,
         studentName,
         turnus: detectedTurnus,
         rawFileName: fileName,
