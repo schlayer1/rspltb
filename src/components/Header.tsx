@@ -11,10 +11,17 @@ import {
   Check, 
   AlertCircle 
 } from 'lucide-react';
-import { StudentSubmission } from '../types';
+import { StudentSubmission, MultiSemesterDatabase } from '../types';
+import { SemesterSelector } from './SemesterSelector';
 
 interface HeaderProps {
   submissions: StudentSubmission[];
+  multiDb?: MultiSemesterDatabase;
+  activeSemesterId?: string;
+  onSelectSemester?: (semesterId: string) => void;
+  onCreateSemester?: (semesterId: string) => void;
+  onOpenBackupModal?: () => void;
+  lastBackupTime?: number;
   onOpenSettings: () => void;
   onOpenExport: () => void;
   onReset: () => void;
@@ -26,6 +33,12 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   submissions,
+  multiDb,
+  activeSemesterId,
+  onSelectSemester,
+  onCreateSemester,
+  onOpenBackupModal,
+  lastBackupTime,
   onOpenSettings,
   onOpenExport,
   onReset,
@@ -49,8 +62,8 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="w-full max-w-[2100px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-3 sm:py-3.5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           
-          {/* Logo & Titel */}
-          <div className="flex items-center gap-3.5">
+          {/* Logo, Titel & Semester-Wähler */}
+          <div className="flex items-center gap-3.5 flex-wrap">
             <img 
               src="/icon.svg" 
               alt="FSU Jena LTB Auswerter" 
@@ -61,6 +74,16 @@ export const Header: React.FC<HeaderProps> = ({
                 <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
                   LTB-Auswerter <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#002f5d]/10 text-[#002f5d] border border-[#002f5d]/20">FSU Jena - ZLB</span>
                 </h1>
+
+                {/* Semester-Auswahl & Neuanlage */}
+                {multiDb && activeSemesterId && onSelectSemester && onCreateSemester && (
+                  <SemesterSelector
+                    multiDb={multiDb}
+                    activeSemesterId={activeSemesterId}
+                    onSelectSemester={onSelectSemester}
+                    onCreateSemester={onCreateSemester}
+                  />
+                )}
                 
                 {/* Discrete API Health Indicator */}
                 <button
@@ -88,13 +111,33 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-                Reflexion schulischer Praxis
+                Reflexion schulischer Praxis · Universität Jena
               </p>
             </div>
           </div>
 
           {/* Action Toolbar */}
           <div className="flex items-center gap-2 flex-wrap self-end md:self-auto">
+            {/* Datensicherung & Gerätewechsel Button */}
+            {onOpenBackupModal && (
+              <button
+                type="button"
+                onClick={onOpenBackupModal}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all shadow-2xs ${
+                  lastBackupTime
+                    ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-950 border-amber-300'
+                }`}
+                title="Sicherungsdatei (.json) erstellen oder für iPad-Wechsel herunterladen"
+              >
+                <ShieldCheck className={`w-3.5 h-3.5 ${lastBackupTime ? 'text-emerald-700' : 'text-amber-600'}`} />
+                <span>Sicherung & Gerätewechsel</span>
+                {!lastBackupTime && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                )}
+              </button>
+            )}
+
             {/* Moodle Export */}
             {completedCount > 0 && (
               <button
@@ -102,7 +145,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-2xs transition-colors"
                 title="Feedback-Dateien als ZIP für Moodle exportieren"
               >
-                <Download className="w-3.5 h-3.5 text-blue-800" />
+                <Download className="w-3.5 h-3.5 text-[#002f5d]" />
                 Moodle-Export ({completedCount})
               </button>
             )}

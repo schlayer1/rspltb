@@ -11,11 +11,14 @@ import { ExportModal } from './components/ExportModal';
 import { TurnusConfirmModal } from './components/TurnusConfirmModal';
 import { BeratungsrundeDashboard } from './components/BeratungsrundeDashboard';
 import { SemesterPortfolioView } from './components/SemesterPortfolioView';
+import { BackupReminderModal } from './components/BackupReminderModal';
 import { 
   StudentSubmission, 
   EvaluationSettings, 
   ProcessingProgress, 
   SeminarDatabase, 
+  SemesterData,
+  MultiSemesterDatabase,
   TurnusId 
 } from './types';
 import { parseZipArchive, parseDirectFiles, parseFolderFileList } from './services/fileParser';
@@ -23,16 +26,23 @@ import { evaluateSubmissionText, checkGeminiApiHealth } from './services/geminiS
 import { pseudonymizeText, restorePersonalFeedback } from './services/pseudonymService';
 import { parseStudentIdentity, enforceSalutation } from './services/nameSalutationService';
 import { 
-  loadDatabase, 
-  saveDatabase, 
+  loadMultiDatabase,
+  saveMultiDatabase,
   mergeIncrementalSubmissions, 
-  exportDatabaseToJson, 
-  importDatabaseFromJson,
+  exportMultiDatabaseToJson,
+  exportSingleSemesterToJson,
+  importMultiDatabaseFromJson,
+  getInitialMultiDatabase,
   getInitialDatabase 
 } from './services/dbService';
+import { 
+  DEFAULT_SEMESTER_ID, 
+  formatSemesterLabel, 
+  createEmptySemester 
+} from './services/semesterService';
 import { triggerFileDownload } from './services/exportService';
 import { SAMPLE_SUBMISSIONS } from './data/sampleSubmissions';
-import { Sparkles, Layers, ShieldCheck, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Sparkles, Layers, ShieldCheck, CheckCircle2, ArrowRight, Archive } from 'lucide-react';
 
 const DEFAULT_SETTINGS: EvaluationSettings = {
   apiKey: localStorage.getItem('rsp_gemini_api_key') || '',
@@ -54,8 +64,23 @@ const DEFAULT_SETTINGS: EvaluationSettings = {
 };
 
 export const App: React.FC = () => {
-  // Database State (IndexedDB)
-  const [database, setDatabase] = useState<SeminarDatabase>(getInitialDatabase());
+  // Multi-Semester Database State
+  const [multiDb, setMultiDb] = useState<MultiSemesterDatabase>(getInitialMultiDatabase());
+  const [activeSemesterId, setActiveSemesterId] = useState<string>(DEFAULT_SEMESTER_ID);
+
+  // Backup Reminder Modal & Tracking
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [lastBackupTime, setLastBackupTime] = useState<number | undefined>(() => {
+    const saved = localStorage.getItem('rsp_last_backup_time');
+    return saved ? parseInt(saved, 10) : undefined;
+  });
+  const [hasUnbackedChanges, setHasUnbackedChanges] = useState<boolean>(false);
+
+  // Current active semester database derived from multiDb
+  const database: SeminarDatabase = useMemo(() => {
+    return multiDb.semesters[activeSemesterId] || createEmptySemester(activeSemesterId);
+  }, [multiDb.semesters, activeSemesterId]);
+
   const [activeTab, setActiveTab] = useState<TurnusId | 'beratung' | 'portfolio'>('ltb1');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -110,21 +135,81 @@ export const App: React.FC = () => {
 
   const cancelBatchRef = useRef(false);
 
-  // Load Database from IndexedDB on startup
+  // Load Multi-Semester Database from IndexedDB on startup
   useEffect(() => {
-    loadDatabase().then(loaded => {
-      setDatabase(loaded);
-      if (loaded.activeTurnus) {
-        setActiveTab(loaded.activeTurnus);
+    loadMultiDatabase().then(loaded => {
+      setMultiDb(loaded);
+      const semId = loaded.activeSemesterId || DEFAULT_SEMESTER_ID;
+      setActiveSemesterId(semId);
+      const currentSem = loaded.semesters[semId];
+      if (currentSem?.activeTurnus) {
+        setActiveTab(currentSem.activeTurnus);
       }
     });
   }, []);
 
-  // Save database whenever updated
+  // Save database for active semester whenever updated
   const persistDatabase = async (updatedDb: SeminarDatabase) => {
-    setDatabase(updatedDb);
-    await saveDatabase(updatedDb);
+    const updatedMulti: MultiSemesterDatabase = {
+      ...multiDb,
+      semesters: {
+        ...multiDb.semesters,
+        [activeSemesterId]: {
+          ...updatedDb,
+          id: activeSemesterId,
+          lastUpdated: Date.now()
+        }
+      },
+      unbackedChangesCount: (multiDb.unbackedChangesCount || 0) + 1
+    };
+    setMultiDb(updatedMulti);
+    setHasUnbackedChanges(true);
+    await saveMultiDatabase(updatedMulti);
   };
+
+  // Switch or create semester
+  const handleSelectSemester = async (semesterId: string) => {
+    let updatedMulti = { ...multiDb };
+    if (!updatedMulti.semesters[semesterId]) {
+      updatedMulti.semesters = {
+        ...updatedMulti.semesters,
+        [semesterId]: createEmptySemester(semesterId)
+      };
+    }
+    updatedMulti.activeSemesterId = semesterId;
+    setActiveSemesterId(semesterId);
+    setMultiDb(updatedMulti);
+    setSelectedId(null);
+    await saveMultiDatabase(updatedMulti);
+  };
+
+  const handleCreateSemester = async (newSemesterId: string) => {
+    await handleSelectSemester(newSemesterId);
+  };
+
+  // 1. Native browser beforeunload guard
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnbackedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnbackedChanges]);
+
+  // 2. Desktop Exit-Intent detection (mouse leaving top of viewport)
+  useEffect(() => {
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (e.clientY <= 0 && hasUnbackedChanges) {
+        setIsBackupModalOpen(true);
+      }
+    };
+    document.addEventListener('mouseleave', handleMouseLeave);
+    return () => document.removeEventListener('mouseleave', handleMouseLeave);
+  }, [hasUnbackedChanges]);
 
   // Run initial API healthcheck
   const runApiHealthCheck = async () => {
@@ -418,8 +503,7 @@ export const App: React.FC = () => {
             }
           };
           currentDb = { ...currentDb, students: updatedStudents };
-          await saveDatabase(currentDb);
-          setDatabase(currentDb);
+          await persistDatabase(currentDb);
         }
       } catch (err: any) {
         setBatchProgress(prev => ({ ...prev, errorsCount: prev.errorsCount + 1 }));
@@ -542,18 +626,43 @@ export const App: React.FC = () => {
   };
 
   // Database Backup handlers
+  const handleExportFullBackup = () => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const blob = exportMultiDatabaseToJson(multiDb);
+    triggerFileDownload(blob, `RSP_LTB_Gesamtsicherung_Alle_Semester_${dateStr}.json`);
+    const ts = Date.now();
+    setLastBackupTime(ts);
+    setHasUnbackedChanges(false);
+    localStorage.setItem('rsp_last_backup_time', ts.toString());
+  };
+
+  const handleExportCurrentSemester = () => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const cleanId = activeSemesterId.replace('/', '-');
+    const blob = exportSingleSemesterToJson(database);
+    triggerFileDownload(blob, `RSP_LTB_Sicherung_${cleanId}_${dateStr}.json`);
+    const ts = Date.now();
+    setLastBackupTime(ts);
+    setHasUnbackedChanges(false);
+    localStorage.setItem('rsp_last_backup_time', ts.toString());
+  };
+
   const handleExportBackup = () => {
-    const blob = exportDatabaseToJson(database);
-    triggerFileDownload(blob, `RSP_LTB_Semester_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+    setIsBackupModalOpen(true);
   };
 
   const handleImportBackup = async (file: File) => {
     try {
-      const imported = await importDatabaseFromJson(file);
-      setDatabase(imported);
-      alert('Semester-Datenbank erfolgreich wiederhergestellt!');
+      const imported = await importMultiDatabaseFromJson(file, multiDb);
+      setMultiDb(imported);
+      setActiveSemesterId(imported.activeSemesterId);
+      setSelectedId(null);
+      setHasUnbackedChanges(false);
+      alert(`Sicherung erfolgreich eingespielt!\n• ${Object.keys(imported.semesters).length} Semester im Bestand\n• Aktives Semester: ${imported.activeSemesterId}`);
     } catch (err: any) {
-      alert(`Fehler beim Import: ${err.message}`);
+      alert(`Fehler beim Import: ${err.message || String(err)}`);
     }
   };
 
@@ -625,6 +734,12 @@ export const App: React.FC = () => {
       {/* Header */}
       <Header
         submissions={currentTurnusSubmissions}
+        multiDb={multiDb}
+        activeSemesterId={activeSemesterId}
+        onSelectSemester={handleSelectSemester}
+        onCreateSemester={handleCreateSemester}
+        onOpenBackupModal={() => setIsBackupModalOpen(true)}
+        lastBackupTime={lastBackupTime}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
         onReset={handleResetCurrentTurnus}
@@ -637,6 +752,25 @@ export const App: React.FC = () => {
       {/* Main Container */}
       <main className="flex-1 w-full max-w-[2100px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-5 space-y-5">
         
+        {/* Archiv-Modus Banner, wenn ein früheres Semester betrachtet wird */}
+        {activeSemesterId !== DEFAULT_SEMESTER_ID && (
+          <div className="bg-[#f8f5ee] border border-[#d9ceb2] rounded-2xl p-3 sm:p-4 flex items-center justify-between gap-3 text-xs text-slate-800 animate-fadeIn shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <Archive className="w-4 h-4 text-[#ae9a63] shrink-0" />
+              <span>
+                Du betrachtest das Archiv von <strong>{formatSemesterLabel(activeSemesterId)}</strong> ({Object.keys(database.students).length} Studierende).
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSelectSemester(DEFAULT_SEMESTER_ID)}
+              className="px-3 py-1.5 bg-[#002f5d] hover:bg-[#002244] text-white font-semibold rounded-xl text-xs transition-colors shrink-0 shadow-xs"
+            >
+              Zum aktuellen Semester ({DEFAULT_SEMESTER_ID})
+            </button>
+          </div>
+        )}
+
         {/* Turnus Navigation Tabs (LTB 1–6, Beratungsrunde, Semester-Portfolio) */}
         <TurnusNavigation
           currentTab={activeTab}
@@ -808,6 +942,16 @@ export const App: React.FC = () => {
           onCancel={() => setUncertainUploadData(null)}
         />
       )}
+
+      {/* Backup Reminder Modal (vor Schließen / für Gerätewechsel) */}
+      <BackupReminderModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        multiDb={multiDb}
+        onExportFullBackup={handleExportFullBackup}
+        onExportCurrentSemester={handleExportCurrentSemester}
+        lastBackupTime={lastBackupTime}
+      />
 
     </div>
   );

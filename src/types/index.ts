@@ -46,10 +46,24 @@ export interface StudentProfile {
   summaryApproved?: boolean;
 }
 
-export interface SeminarDatabase {
+export interface SemesterData {
+  id: string; // e.g. "WS26/27", "SS27", "WS27/28"
+  label: string; // e.g. "Wintersemester 2026/27"
   students: Record<string, StudentProfile>; // keyed by moodleId or name
   activeTurnus: TurnusId;
+  createdAt?: number;
   lastUpdated: number;
+}
+
+// Backward-compatible alias for single seminar views
+export type SeminarDatabase = SemesterData;
+
+export interface MultiSemesterDatabase {
+  activeSemesterId: string; // e.g. "WS26/27"
+  semesters: Record<string, SemesterData>; // keyed by semesterId
+  version: number;
+  lastBackupTimestamp?: number;
+  unbackedChangesCount?: number;
 }
 
 export type FeedbackTone = 'appreciative' | 'collegial_reflective' | 'didactic_focus';

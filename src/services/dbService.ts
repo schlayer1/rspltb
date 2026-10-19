@@ -1,16 +1,25 @@
-import { SeminarDatabase, StudentProfile, StudentSubmission, TurnusId } from '../types';
+import { SeminarDatabase, SemesterData, MultiSemesterDatabase, StudentProfile, StudentSubmission, TurnusId } from '../types';
 import { parseStudentIdentity } from './nameSalutationService';
+import { DEFAULT_SEMESTER_ID, createEmptySemester, formatSemesterLabel } from './semesterService';
 
 const DB_NAME = 'RSP_LTB_Database_v1';
 const STORE_NAME = 'seminar_store';
 const DB_VERSION = 1;
 
-export function getInitialDatabase(): SeminarDatabase {
+export function getInitialMultiDatabase(): MultiSemesterDatabase {
   return {
-    students: {},
-    activeTurnus: 'ltb1',
-    lastUpdated: Date.now()
+    activeSemesterId: DEFAULT_SEMESTER_ID,
+    semesters: {
+      [DEFAULT_SEMESTER_ID]: createEmptySemester(DEFAULT_SEMESTER_ID)
+    },
+    version: 2,
+    lastBackupTimestamp: undefined,
+    unbackedChangesCount: 0
   };
+}
+
+export function getInitialDatabase(): SeminarDatabase {
+  return createEmptySemester(DEFAULT_SEMESTER_ID);
 }
 
 function openDB(): Promise<IDBDatabase> {
@@ -34,7 +43,10 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function loadDatabase(): Promise<SeminarDatabase> {
+/**
+ * Lädt die MultiSemesterDatabase und migriert alte Single-Seminar-Datenbanken verlustfrei ins WS26/27.
+ */
+export async function loadMultiDatabase(): Promise<MultiSemesterDatabase> {
   try {
     const db = await openDB();
     return new Promise((resolve) => {
@@ -42,31 +54,64 @@ export async function loadDatabase(): Promise<SeminarDatabase> {
       const store = tx.objectStore(STORE_NAME);
       const req = store.get('current_seminar');
 
-      req.onsuccess = () => {
+      req.onsuccess = async () => {
         if (req.result) {
-          resolve(req.result as SeminarDatabase);
-        } else {
-          const initial = getInitialDatabase();
-          resolve(initial);
+          const raw = req.result as any;
+
+          // Fall 1: Bereits modernes Multi-Semester-Format
+          if (raw.semesters && raw.activeSemesterId) {
+            resolve(raw as MultiSemesterDatabase);
+            return;
+          }
+
+          // Fall 2: Migration von Legacy-Single-Seminar (z. B. bestehende 25 Studierende)
+          if (raw.students) {
+            const legacy = raw as SeminarDatabase;
+            const migrated: MultiSemesterDatabase = {
+              activeSemesterId: DEFAULT_SEMESTER_ID,
+              semesters: {
+                [DEFAULT_SEMESTER_ID]: {
+                  id: DEFAULT_SEMESTER_ID,
+                  label: formatSemesterLabel(DEFAULT_SEMESTER_ID),
+                  students: legacy.students || {},
+                  activeTurnus: legacy.activeTurnus || 'ltb1',
+                  createdAt: Date.now(),
+                  lastUpdated: legacy.lastUpdated || Date.now()
+                }
+              },
+              version: 2,
+              lastBackupTimestamp: undefined,
+              unbackedChangesCount: 0
+            };
+
+            await saveMultiDatabase(migrated);
+            resolve(migrated);
+            return;
+          }
         }
+
+        const initial = getInitialMultiDatabase();
+        resolve(initial);
       };
 
-      req.onerror = () => resolve(getInitialDatabase());
+      req.onerror = () => resolve(getInitialMultiDatabase());
     });
   } catch (err) {
     console.warn('Fehler beim Laden von IndexedDB, nutze Speicherzustand:', err);
-    return getInitialDatabase();
+    return getInitialMultiDatabase();
   }
 }
 
-export async function saveDatabase(data: SeminarDatabase): Promise<void> {
+/**
+ * Speichert die gesamte MultiSemesterDatabase in IndexedDB
+ */
+export async function saveMultiDatabase(data: MultiSemesterDatabase): Promise<void> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      const updated = { ...data, lastUpdated: Date.now() };
-      const req = store.put(updated, 'current_seminar');
+      const req = store.put(data, 'current_seminar');
 
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
@@ -74,6 +119,24 @@ export async function saveDatabase(data: SeminarDatabase): Promise<void> {
   } catch (err) {
     console.error('Fehler beim Speichern in IndexedDB:', err);
   }
+}
+
+/**
+ * Kompatibilitäts-Wrapper: Lädt das aktuell aktive Semester
+ */
+export async function loadDatabase(): Promise<SeminarDatabase> {
+  const multi = await loadMultiDatabase();
+  return multi.semesters[multi.activeSemesterId] || createEmptySemester(multi.activeSemesterId);
+}
+
+/**
+ * Kompatibilitäts-Wrapper: Speichert Daten in das aktuell aktive Semester
+ */
+export async function saveDatabase(data: SeminarDatabase): Promise<void> {
+  const multi = await loadMultiDatabase();
+  const semId = data.id || multi.activeSemesterId;
+  multi.semesters[semId] = { ...data, id: semId, lastUpdated: Date.now() };
+  await saveMultiDatabase(multi);
 }
 
 /**
@@ -176,17 +239,60 @@ export function mergeIncrementalSubmissions(
   };
 }
 
-export function exportDatabaseToJson(db: SeminarDatabase): Blob {
+export function exportMultiDatabaseToJson(db: MultiSemesterDatabase): Blob {
   const jsonStr = JSON.stringify(db, null, 2);
   return new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
 }
 
-export async function importDatabaseFromJson(file: File): Promise<SeminarDatabase> {
+export function exportSingleSemesterToJson(semesterData: SemesterData): Blob {
+  const jsonStr = JSON.stringify(semesterData, null, 2);
+  return new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+}
+
+export function exportDatabaseToJson(db: SeminarDatabase | MultiSemesterDatabase): Blob {
+  const jsonStr = JSON.stringify(db, null, 2);
+  return new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+}
+
+export async function importMultiDatabaseFromJson(
+  file: File, 
+  currentDb?: MultiSemesterDatabase
+): Promise<MultiSemesterDatabase> {
   const text = await file.text();
-  const parsed = JSON.parse(text) as SeminarDatabase;
-  if (!parsed.students) {
-    throw new Error('Ungültiges Backup-Format: Keine Studierendendaten gefunden.');
+  const parsed = JSON.parse(text) as any;
+
+  // Fall A: Vollständiges MultiSemesterDatabase-Backup
+  if (parsed.semesters && parsed.activeSemesterId) {
+    const multi = parsed as MultiSemesterDatabase;
+    await saveMultiDatabase(multi);
+    return multi;
   }
-  await saveDatabase(parsed);
-  return parsed;
+
+  // Fall B: Einzelnes Semester-Backup oder Legacy-Backup
+  if (parsed.students) {
+    const base = currentDb ? { ...currentDb } : getInitialMultiDatabase();
+    const semId = parsed.id || base.activeSemesterId || DEFAULT_SEMESTER_ID;
+    
+    base.semesters = {
+      ...base.semesters,
+      [semId]: {
+        id: semId,
+        label: parsed.label || formatSemesterLabel(semId),
+        students: parsed.students,
+        activeTurnus: parsed.activeTurnus || 'ltb1',
+        createdAt: parsed.createdAt || Date.now(),
+        lastUpdated: parsed.lastUpdated || Date.now()
+      }
+    };
+    base.activeSemesterId = semId;
+    await saveMultiDatabase(base);
+    return base;
+  }
+
+  throw new Error('Ungültiges Backup-Format: Keine gültigen Semester- oder Studierendendaten gefunden.');
+}
+
+export async function importDatabaseFromJson(file: File): Promise<SeminarDatabase> {
+  const multi = await importMultiDatabaseFromJson(file);
+  return multi.semesters[multi.activeSemesterId];
 }
