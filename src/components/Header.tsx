@@ -4,8 +4,6 @@ import {
   Settings, 
   Download, 
   ShieldCheck, 
-  Sparkles, 
-  Activity, 
   Database, 
   Upload, 
   Check, 
@@ -21,6 +19,7 @@ interface HeaderProps {
   onSelectSemester?: (semesterId: string) => void;
   onCreateSemester?: (semesterId: string) => void;
   onOpenBackupModal?: () => void;
+  onOpenReadme?: () => void;
   lastBackupTime?: number;
   onOpenSettings: () => void;
   onOpenExport: () => void;
@@ -38,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectSemester,
   onCreateSemester,
   onOpenBackupModal,
+  onOpenReadme,
   lastBackupTime,
   onOpenSettings,
   onOpenExport,
@@ -59,8 +59,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-      <div className="w-full max-w-[2100px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-3 sm:py-3.5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 py-2 sm:py-3.5">
+        
+        {/* DESKTOP VIEW (md:flex, hidden on mobile) */}
+        <div className="hidden md:flex items-center justify-between gap-4">
           
           {/* Logo, Titel & Semester-Wähler */}
           <div className="flex items-center gap-3.5 flex-wrap">
@@ -116,8 +118,21 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Action Toolbar */}
+          {/* Action Toolbar Desktop */}
           <div className="flex items-center gap-2 flex-wrap self-end md:self-auto">
+            {/* Readme / Anleitung Button */}
+            {onOpenReadme && (
+              <button
+                type="button"
+                onClick={onOpenReadme}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#f8f5ee] hover:bg-[#f0ead8] text-[#002f5d] border border-[#d9ceb2] transition-colors shadow-2xs"
+                title="Dozierenden-Handbuch & Workflow-Anleitung öffnen"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-[#ae9a63]" />
+                <span>Anleitung & Hilfe</span>
+              </button>
+            )}
+
             {/* Datensicherung & Gerätewechsel Button */}
             {onOpenBackupModal && (
               <button
@@ -159,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Lokale Datenbank & Semester-Backup"
               >
                 <Database className="w-3.5 h-3.5 text-slate-600" />
-                <span className="hidden sm:inline">Backup</span>
+                <span>Backup</span>
               </button>
 
               {showBackupMenu && (
@@ -189,14 +204,6 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 </div>
               )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={handleFileInputChange}
-              />
             </div>
 
             {/* Prompt & Settings */}
@@ -206,7 +213,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Prompt, Kriterien & API-Einstellungen bearbeiten"
             >
               <Settings className="w-3.5 h-3.5 text-slate-600" />
-              <span className="hidden sm:inline">Einstellungen</span>
+              <span>Einstellungen</span>
             </button>
 
             {submissions.length > 0 && (
@@ -219,8 +226,130 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* MOBILE VIEW (md:hidden, ultra-compact 2 rows <= 75px) */}
+        <div className="md:hidden space-y-1.5">
+          {/* Zeile 1: Brand + Semester-Pill + API Dot + Schnellicons */}
+          <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <img 
+                src="/icon.svg" 
+                alt="FSU Jena" 
+                className="w-7 h-7 rounded-lg shadow-2xs shrink-0 object-cover" 
+              />
+              <span className="font-bold text-slate-900 text-sm tracking-tight truncate">
+                LTB-Auswerter
+              </span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-[#002f5d]/10 text-[#002f5d] shrink-0">
+                ZLB
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {multiDb && activeSemesterId && onSelectSemester && onCreateSemester && (
+                <SemesterSelector
+                  multiDb={multiDb}
+                  activeSemesterId={activeSemesterId}
+                  onSelectSemester={onSelectSemester}
+                  onCreateSemester={onCreateSemester}
+                />
+              )}
+
+              {/* API Status Dot */}
+              <button
+                type="button"
+                onClick={onCheckApiHealth}
+                className="p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                title={`${apiHealth.message} (Klicken zum Testen)`}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full inline-block ${
+                  apiHealth.isChecking
+                    ? 'bg-amber-400 animate-ping'
+                    : apiHealth.ok
+                    ? 'bg-emerald-500'
+                    : 'bg-rose-500'
+                }`} />
+              </button>
+
+              {/* Settings Icon Button */}
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                title="Einstellungen"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Zeile 2: Horizontale Schnell-Aktionsleiste */}
+          <div className="flex items-center justify-between gap-1.5 overflow-x-auto pb-0.5 pt-0.5 text-xs scrollbar-none">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              {/* Sichern Button */}
+              {onOpenBackupModal && (
+                <button
+                  type="button"
+                  onClick={onOpenBackupModal}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all shrink-0 ${
+                    lastBackupTime
+                      ? 'bg-white text-slate-700 border-slate-300'
+                      : 'bg-amber-50 text-amber-950 border-amber-300'
+                  }`}
+                >
+                  <ShieldCheck className={`w-3.5 h-3.5 ${lastBackupTime ? 'text-emerald-700' : 'text-amber-600'}`} />
+                  <span>Sichern</span>
+                  {!lastBackupTime && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+                </button>
+              )}
+
+              {/* Moodle Export Button */}
+              {completedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={onOpenExport}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#002f5d] text-white shrink-0 shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#ae9a63]" />
+                  <span>Export ({completedCount})</span>
+                </button>
+              )}
+
+              {/* Anleitung Button */}
+              {onOpenReadme && (
+                <button
+                  type="button"
+                  onClick={onOpenReadme}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#f8f5ee] text-[#002f5d] border border-[#d9ceb2] shrink-0"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-[#ae9a63]" />
+                  <span>Anleitung</span>
+                </button>
+              )}
+            </div>
+
+            {/* Backup Restore Trigger */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 shrink-0"
+              title="Backup (.json) einspielen"
+            >
+              <Upload className="w-3.5 h-3.5 text-slate-600" />
+            </button>
+          </div>
 
         </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={handleFileInputChange}
+        />
+
       </div>
     </header>
   );

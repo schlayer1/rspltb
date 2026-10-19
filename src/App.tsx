@@ -12,6 +12,7 @@ import { TurnusConfirmModal } from './components/TurnusConfirmModal';
 import { BeratungsrundeDashboard } from './components/BeratungsrundeDashboard';
 import { SemesterPortfolioView } from './components/SemesterPortfolioView';
 import { BackupReminderModal } from './components/BackupReminderModal';
+import { ReadmeModal } from './components/ReadmeModal';
 import { 
   StudentSubmission, 
   EvaluationSettings, 
@@ -70,6 +71,7 @@ export const App: React.FC = () => {
 
   // Backup Reminder Modal & Tracking
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isReadmeOpen, setIsReadmeOpen] = useState(false);
   const [lastBackupTime, setLastBackupTime] = useState<number | undefined>(() => {
     const saved = localStorage.getItem('rsp_last_backup_time');
     return saved ? parseInt(saved, 10) : undefined;
@@ -739,6 +741,7 @@ export const App: React.FC = () => {
         onSelectSemester={handleSelectSemester}
         onCreateSemester={handleCreateSemester}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
+        onOpenReadme={() => setIsReadmeOpen(true)}
         lastBackupTime={lastBackupTime}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
@@ -951,6 +954,12 @@ export const App: React.FC = () => {
         onExportFullBackup={handleExportFullBackup}
         onExportCurrentSemester={handleExportCurrentSemester}
         lastBackupTime={lastBackupTime}
+      />
+
+      {/* Readme / Dozierenden-Handbuch Modal */}
+      <ReadmeModal
+        isOpen={isReadmeOpen}
+        onClose={() => setIsReadmeOpen(false)}
       />
 
     </div>
