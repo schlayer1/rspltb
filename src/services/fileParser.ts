@@ -3,6 +3,7 @@ import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import mammoth from 'mammoth';
 import { StudentSubmission, TurnusId } from '../types';
+import { extractMatrikelnummerFromText } from './studentMergeService';
 
 // Set up PDF.js worker via Vite's ?url asset loader
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -326,10 +327,12 @@ export async function parseFolderFileList(
       }
 
       const words = rawText.split(/\s+/).filter(w => w.length > 0).length;
+      const textMatrikel = extractMatrikelnummerFromText(rawText);
+      const effectiveMatrikel = textMatrikel || matrikelnummer;
 
       submissions.push({
-        id: `sub_${matrikelnummer || Date.now()}_${detectedTurnus}_${counter}`,
-        matrikelnummer,
+        id: `sub_${effectiveMatrikel || Date.now()}_${detectedTurnus}_${counter}`,
+        matrikelnummer: effectiveMatrikel,
         moodleId: matrikelnummer,
         studentName,
         turnus: detectedTurnus,
@@ -460,10 +463,12 @@ export async function parseZipArchive(
       }
 
       const words = rawText.split(/\s+/).filter(w => w.length > 0).length;
+      const textMatrikel = extractMatrikelnummerFromText(rawText);
+      const effectiveMatrikel = textMatrikel || matrikelnummer;
 
       submissions.push({
-        id: `sub_${matrikelnummer || Date.now()}_${detectedTurnus}_${counter}`,
-        matrikelnummer,
+        id: `sub_${effectiveMatrikel || Date.now()}_${detectedTurnus}_${counter}`,
+        matrikelnummer: effectiveMatrikel,
         moodleId: matrikelnummer,
         studentName,
         turnus: detectedTurnus,

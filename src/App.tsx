@@ -26,6 +26,7 @@ import { parseZipArchive, parseDirectFiles, parseFolderFileList } from './servic
 import { evaluateSubmissionText, checkGeminiApiHealth } from './services/geminiService';
 import { pseudonymizeText, restorePersonalFeedback } from './services/pseudonymService';
 import { parseStudentIdentity, enforceSalutation } from './services/nameSalutationService';
+import { findStudentForSubmission, consolidateDuplicateStudents } from './services/studentMergeService';
 import { 
   loadMultiDatabase,
   saveMultiDatabase,
@@ -417,7 +418,8 @@ export const App: React.FC = () => {
     if (!sub) return;
 
     setIsRegeneratingSingle(true);
-    const studentKey = sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_');
+    const targetStudent = findStudentForSubmission(database.students, sub);
+    const studentKey = targetStudent ? targetStudent.id : (sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_'));
 
     try {
       const { feedback, abstract, suggestedFocus, problemCluster } = await evaluateSingle(sub, angleIndex);
@@ -430,6 +432,7 @@ export const App: React.FC = () => {
             ...updatedStudents[studentKey].submissions,
             [activeTurnus]: {
               ...sub,
+              studentId: studentKey,
               status: 'completed',
               generatedFeedback: feedback,
               editedFeedback: feedback,
@@ -478,7 +481,8 @@ export const App: React.FC = () => {
         currentStepText: 'Lese Abgabe ein...'
       }));
 
-      const studentKey = currentSub.moodleId || currentSub.studentName.toLowerCase().replace(/\s+/g, '_');
+      const targetStudent = findStudentForSubmission(currentDb.students, currentSub);
+      const studentKey = targetStudent ? targetStudent.id : (currentSub.moodleId || currentSub.studentName.toLowerCase().replace(/\s+/g, '_'));
 
       try {
         const angleIndex = i;
@@ -494,6 +498,7 @@ export const App: React.FC = () => {
               ...updatedStudents[studentKey].submissions,
               [activeTurnus]: {
                 ...currentSub,
+                studentId: studentKey,
                 status: 'completed',
                 generatedFeedback: feedback,
                 editedFeedback: feedback,
@@ -538,8 +543,9 @@ export const App: React.FC = () => {
   // Update student gender (manual toggle for 'male' / 'female' override)
   const handleUpdateStudentGender = async (studentId: string, newGender: 'male' | 'female') => {
     const updatedStudents = { ...database.students };
-    const student = updatedStudents[studentId];
+    const student = updatedStudents[studentId] || Object.values(updatedStudents).find(s => s.id === studentId || s.moodleId === studentId);
     if (!student) return;
+    const actualKey = student.id;
 
     student.gender = newGender;
 
@@ -570,7 +576,7 @@ export const App: React.FC = () => {
         newGender
       );
     }
-    updatedStudents[studentId] = { ...student };
+    updatedStudents[actualKey] = { ...student };
 
     await persistDatabase({ ...database, students: updatedStudents });
   };
@@ -579,7 +585,8 @@ export const App: React.FC = () => {
   const handleUpdateFeedback = async (id: string, newFeedback: string) => {
     const sub = currentTurnusSubmissions.find(s => s.id === id);
     if (!sub) return;
-    const studentKey = sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_');
+    const targetStudent = findStudentForSubmission(database.students, sub);
+    const studentKey = targetStudent ? targetStudent.id : (sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_'));
 
     const updatedStudents = { ...database.students };
     if (updatedStudents[studentKey]) {
@@ -595,7 +602,8 @@ export const App: React.FC = () => {
   const handleApprove = async (id: string) => {
     const sub = currentTurnusSubmissions.find(s => s.id === id);
     if (!sub) return;
-    const studentKey = sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_');
+    const targetStudent = findStudentForSubmission(database.students, sub);
+    const studentKey = targetStudent ? targetStudent.id : (sub.moodleId || sub.studentName.toLowerCase().replace(/\s+/g, '_'));
 
     const updatedStudents = { ...database.students };
     if (updatedStudents[studentKey]) {

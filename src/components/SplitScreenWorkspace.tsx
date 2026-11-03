@@ -96,7 +96,7 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
   };
 
   const identity = parseStudentIdentity(submission.studentName, submission.gender);
-  const studentKey = submission.moodleId || submission.studentName.toLowerCase().replace(/\s+/g, '_');
+  const studentKey = submission.studentId || submission.moodleId || submission.studentName.toLowerCase().replace(/\s+/g, '_');
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">

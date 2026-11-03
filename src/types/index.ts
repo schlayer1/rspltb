@@ -12,6 +12,7 @@ export interface SuggestedFocus {
 
 export interface StudentSubmission {
   id: string;
+  studentId?: string; // Links to StudentProfile.id in SeminarDatabase.students
   matrikelnummer?: string; // FSU Matrikelnummer e.g. "1546331" from "Arthur Mika_1546331_assignsubmission_file"
   moodleId: string; // alias for matrikelnummer for backwards compatibility
   studentName: string; // e.g. "Arthur Mika"

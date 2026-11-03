@@ -139,7 +139,12 @@ Da alle Daten lokal im Browser gespeichert werden:
 
 ## 🛠️ Versions-Historie & Changelog
 
-### Version 1.9.1 (Aktuell)
+### Version 1.9.2 (Aktuell)
+* **Intelligente Studierenden-Zusammenführung (LTB 1–6)**: Vollständige Entkopplung von wechselnden Moodle-Assignment-IDs im Ordnernamen. Studierende werden turnusübergreifend an ihrem normalisierten Namen (inkl. Namensdrehern *„Nachname, Vorname“*) und ihrer echten Universitäts-Matrikelnummer aus dem Text erkannt.
+* **Automatische Datenbank-Heilung & Deduplikation**: Bereits doppelt angelegte Studierende (z. B. durch getrennten Import von LTB 1 und LTB 2) werden beim Laden der App automatisch und verlustfrei zu einer einzigen Akte verschmolzen.
+* **Universitäts-Matrikelnummern-Parser**: Automatische Erkennung 5–8-stelliger Matrikelnummern direkt aus dem Fließtext der Lerntagebücher.
+
+### Version 1.9.1
 * **iOS Safe-Area & Notch-Korrektur**: Dynamisches `env(safe-area-inset-top)`-Padding im Header. Bedienelemente werden auf dem iPhone im Vollbildmodus und in Safari zuverlässig unterhalb von Dynamic Island, Notch, Uhrzeit und Akkuanzeige platziert, ohne dass Systemanzeigen den Header verdecken.
 * **Optimierte PWA-Statusleiste**: Hoher Kontrast für iOS-Systemsymbole (Uhr, Akku, WLAN) über hellem Header (`status-bar-style: default`).
 
