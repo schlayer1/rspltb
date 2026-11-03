@@ -13,7 +13,9 @@ import {
   AlertCircle,
   Eye,
   SlidersHorizontal,
-  ChevronDown
+  ChevronDown,
+  Trash2,
+  UserMinus
 } from 'lucide-react';
 import { StudentSubmission, EvaluationSettings } from '../types';
 import { DIVERSITY_ANGLES, ANTI_AI_BLACKLIST } from '../services/geminiService';
@@ -26,6 +28,8 @@ interface SplitScreenWorkspaceProps {
   onApprove: (id: string) => void;
   onRegenerate: (id: string, angleIndex: number) => void;
   onUpdateGender?: (studentId: string, gender: 'male' | 'female') => void;
+  onDeleteSubmission?: (id: string) => void;
+  onDeleteStudent?: (studentId: string) => void;
   onNavigate: (direction: 'prev' | 'next') => void;
   hasPrev: boolean;
   hasNext: boolean;
@@ -41,6 +45,8 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
   onApprove,
   onRegenerate,
   onUpdateGender,
+  onDeleteSubmission,
+  onDeleteStudent,
   onNavigate,
   hasPrev,
   hasNext,
@@ -156,6 +162,19 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
                   <span>{identity.salutation}</span>
                 </button>
               )}
+
+              {/* Student Seminar Exit / Deletion Button */}
+              {onDeleteStudent && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteStudent(studentKey)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-500 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all"
+                  title={`Studierende/n "${submission.studentName}" vollständig aus dem Seminar entfernen (z. B. bei Seminarwechsel)`}
+                >
+                  <UserMinus className="w-3 h-3 text-slate-400 group-hover:text-rose-600" />
+                  <span className="hidden sm:inline">Seminarwechsel</span>
+                </button>
+              )}
             </div>
             <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
               {(submission.matrikelnummer || submission.moodleId) && (
@@ -200,6 +219,19 @@ export const SplitScreenWorkspace: React.FC<SplitScreenWorkspaceProps> = ({
                 {submission.status === 'approved' ? 'Freigegeben ✓' : 'Als geprüft markieren'}
               </button>
             </>
+          )}
+
+          {/* Delete Single Submission */}
+          {onDeleteSubmission && (
+            <button
+              type="button"
+              onClick={() => onDeleteSubmission(submission.id)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors"
+              title="Diese Abgabe löschen (z. B. wenn versehentlich im falschen Turnus hochgeladen)"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span className="hidden md:inline">Abgabe löschen</span>
+            </button>
           )}
         </div>
       </div>

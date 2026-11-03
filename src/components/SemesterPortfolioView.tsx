@@ -12,7 +12,9 @@ import {
   GraduationCap, 
   RefreshCw,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Trash2,
+  UserMinus
 } from 'lucide-react';
 import { generateSemesterSummaryFeedback } from '../services/geminiService';
 import { parseStudentIdentity } from '../services/nameSalutationService';
@@ -23,6 +25,8 @@ interface SemesterPortfolioViewProps {
   onUpdateSummary: (studentId: string, summary: string, approved: boolean) => void;
   onUpdateGender: (studentId: string, gender: 'male' | 'female') => void;
   onJumpToSubmission: (studentId: string, turnus: TurnusId) => void;
+  onDeleteStudent?: (studentId: string) => void;
+  onDeleteSubmission?: (turnus: TurnusId, studentId: string) => void;
 }
 
 export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
@@ -30,7 +34,9 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
   settings,
   onUpdateSummary,
   onUpdateGender,
-  onJumpToSubmission
+  onJumpToSubmission,
+  onDeleteStudent,
+  onDeleteSubmission
 }) => {
   const studentsList = Object.values(database.students);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
@@ -51,6 +57,15 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
   });
 
   const selectedStudent = database.students[selectedStudentId || ''] || filteredStudents[0] || null;
+
+  const handleDeleteStudent = (studentId: string) => {
+    if (!onDeleteStudent) return;
+    onDeleteStudent(studentId);
+    if (selectedStudentId === studentId) {
+      const remaining = studentsList.filter(s => s.id !== studentId);
+      setSelectedStudentId(remaining[0]?.id || null);
+    }
+  };
 
   const handleGenerateSummary = async () => {
     if (!selectedStudent) return;
@@ -181,6 +196,20 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
                         </span>
                       );
                     })}
+
+                    {onDeleteStudent && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteStudent(student.id);
+                        }}
+                        className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors ml-0.5"
+                        title={`"${student.fullName}" aus dem Seminar entfernen (z. B. bei Seminarwechsel)`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -240,15 +269,29 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleGenerateSummary}
-                  disabled={isGenerating || Object.keys(selectedStudent.submissions).length === 0}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#002f5d] hover:bg-[#002244] text-white shadow-xs transition-all disabled:opacity-50 shrink-0"
-                >
-                  <Sparkles className="w-4 h-4 text-[#ae9a63]" />
-                  {isGenerating ? (generatingStep || 'Generiere Synthese...') : 'Semester-Gesamtfeedback erstellen'}
-                </button>
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  {onDeleteStudent && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStudent(selectedStudent.id)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors"
+                      title={`"${selectedStudent.fullName}" vollständig aus dem Seminar entfernen (z. B. bei Seminarwechsel)`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Studierende/n entfernen</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleGenerateSummary}
+                    disabled={isGenerating || Object.keys(selectedStudent.submissions).length === 0}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#002f5d] hover:bg-[#002244] text-white shadow-xs transition-all disabled:opacity-50"
+                  >
+                    <Sparkles className="w-4 h-4 text-[#ae9a63]" />
+                    {isGenerating ? (generatingStep || 'Generiere Synthese...') : 'Semester-Gesamtfeedback erstellen'}
+                  </button>
+                </div>
               </div>
 
               {/* Gesamtfeedback Bereich */}
@@ -339,12 +382,26 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
                           </div>
 
                           {sub ? (
-                            <button
-                              onClick={() => onJumpToSubmission(selectedStudent.id, t)}
-                              className="text-xs text-blue-900 hover:text-blue-950 font-semibold inline-flex items-center gap-1 hover:underline"
-                            >
-                              Im Arbeitsplatz öffnen <ArrowRight className="w-3 h-3" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => onJumpToSubmission(selectedStudent.id, t)}
+                                className="text-xs text-blue-900 hover:text-blue-950 font-semibold inline-flex items-center gap-1 hover:underline"
+                              >
+                                Im Arbeitsplatz öffnen <ArrowRight className="w-3 h-3" />
+                              </button>
+
+                              {onDeleteSubmission && (
+                                <button
+                                  type="button"
+                                  onClick={() => onDeleteSubmission(t, selectedStudent.id)}
+                                  className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-1.5 py-0.5 rounded transition-colors"
+                                  title={`Abgabe für ${t.toUpperCase()} löschen`}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Löschen</span>
+                                </button>
+                              )}
+                            </div>
                           ) : (
                             <button
                               onClick={() => onJumpToSubmission(selectedStudent.id, t)}

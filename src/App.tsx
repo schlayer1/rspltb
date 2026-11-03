@@ -16,6 +16,7 @@ import { ReadmeModal } from './components/ReadmeModal';
 import { UploadModal } from './components/UploadModal';
 import { 
   StudentSubmission, 
+  StudentProfile,
   EvaluationSettings, 
   ProcessingProgress, 
   SeminarDatabase, 
@@ -637,6 +638,94 @@ export const App: React.FC = () => {
     }
   };
 
+  // Delete a single submission (either by submission id, or by turnus + student id)
+  const handleDeleteSubmission = async (turnusOrSubId: string, maybeStudentId?: string) => {
+    let targetStudent: StudentProfile | undefined;
+    let targetTurnus: TurnusId | undefined;
+    let targetSub: StudentSubmission | undefined;
+
+    if (maybeStudentId && (turnusOrSubId.startsWith('ltb') as boolean)) {
+      targetTurnus = turnusOrSubId as TurnusId;
+      targetStudent = database.students[maybeStudentId] || Object.values(database.students).find(s => s.id === maybeStudentId || s.moodleId === maybeStudentId);
+      if (targetStudent) {
+        targetSub = targetStudent.submissions[targetTurnus];
+      }
+    } else {
+      // It's a submission ID
+      for (const student of Object.values(database.students)) {
+        for (const [t, sub] of Object.entries(student.submissions)) {
+          if (sub && sub.id === turnusOrSubId) {
+            targetStudent = student;
+            targetTurnus = t as TurnusId;
+            targetSub = sub;
+            break;
+          }
+        }
+        if (targetSub) break;
+      }
+    }
+
+    if (!targetStudent || !targetTurnus || !targetSub) {
+      alert('Die Abgabe konnte in der Datenbank nicht gefunden werden.');
+      return;
+    }
+
+    const studentName = targetSub.studentName || targetStudent.fullName;
+    const confirmed = window.confirm(
+      `Möchtest du die Abgabe von "${studentName}" für ${targetTurnus.toUpperCase()} wirklich löschen?\n\n` +
+      `Hinweis: Der Studierende bleibt im Seminar erhalten; nur diese Einreichung wird entfernt.`
+    );
+    if (!confirmed) return;
+
+    const studentKey = targetStudent.id;
+    const updatedStudents = { ...database.students };
+    const updatedStudent = { ...updatedStudents[studentKey] };
+    const updatedSubmissions = { ...updatedStudent.submissions };
+    delete updatedSubmissions[targetTurnus];
+    updatedStudent.submissions = updatedSubmissions;
+    updatedStudents[studentKey] = updatedStudent;
+
+    // Reset selection if active submission was deleted
+    if (selectedId === targetSub.id) {
+      const remainingInTurnus = currentTurnusSubmissions.filter(s => s.id !== targetSub!.id);
+      setSelectedId(remainingInTurnus[0]?.id || null);
+    }
+    setSelectedSubIds(prev => prev.filter(id => id !== targetSub!.id));
+
+    await persistDatabase({ ...database, students: updatedStudents });
+  };
+
+  // Delete a student completely from the active seminar (e.g. seminar switch or misimport)
+  const handleDeleteStudent = async (studentId: string) => {
+    const student = database.students[studentId] || Object.values(database.students).find(s => s.id === studentId || s.moodleId === studentId);
+    if (!student) {
+      alert('Der/die Studierende konnte nicht in der Datenbank gefunden werden.');
+      return;
+    }
+
+    const studentKey = student.id;
+    const subCount = Object.keys(student.submissions).length;
+    const confirmed = window.confirm(
+      `Möchtest du "${student.fullName}" wirklich vollständig aus dem Seminar entfernen?\n\n` +
+      `Achtung: ${subCount} hinterlegte LTB-Abgabe(n) und alle Feedbacks dieser Person im aktiven Semester werden unwiderruflich gelöscht (z. B. bei Seminarwechsel).`
+    );
+    if (!confirmed) return;
+
+    const updatedStudents = { ...database.students };
+    delete updatedStudents[studentKey];
+
+    // Remove deleted submission IDs from selection states
+    const deletedSubIds = Object.values(student.submissions).map(s => s?.id).filter((id): id is string => Boolean(id));
+    setSelectedSubIds(prev => prev.filter(id => !deletedSubIds.includes(id)));
+
+    if (selectedId && deletedSubIds.includes(selectedId)) {
+      const remainingInTurnus = currentTurnusSubmissions.filter(s => !deletedSubIds.includes(s.id));
+      setSelectedId(remainingInTurnus[0]?.id || null);
+    }
+
+    await persistDatabase({ ...database, students: updatedStudents });
+  };
+
   // Database Backup handlers
   const handleExportFullBackup = () => {
     const now = new Date();
@@ -809,6 +898,8 @@ export const App: React.FC = () => {
             onUpdateSummary={handleUpdateSemesterSummary}
             onUpdateGender={handleUpdateStudentGender}
             onJumpToSubmission={handleJumpToSubmission}
+            onDeleteStudent={handleDeleteStudent}
+            onDeleteSubmission={handleDeleteSubmission}
           />
         )}
 
@@ -869,6 +960,8 @@ export const App: React.FC = () => {
                       onApprove={handleApprove}
                       onRegenerate={handleEvaluateSingle}
                       onUpdateGender={handleUpdateStudentGender}
+                      onDeleteSubmission={handleDeleteSubmission}
+                      onDeleteStudent={handleDeleteStudent}
                       onNavigate={handleNavigate}
                       hasPrev={selectedIndex > 0}
                       hasNext={selectedIndex < filteredSubmissions.length - 1}
@@ -898,6 +991,7 @@ export const App: React.FC = () => {
                         onEvaluateSingle={handleEvaluateSingle}
                         onEvaluateSelected={handleStartBatchSelected}
                         onOpenUpload={() => setIsUploadModalOpen(true)}
+                        onDeleteSubmission={handleDeleteSubmission}
                         isBatchRunning={batchProgress.isProcessing}
                       />
                     </div>
@@ -914,6 +1008,7 @@ export const App: React.FC = () => {
                     onEvaluateSingle={handleEvaluateSingle}
                     onEvaluateSelected={handleStartBatchSelected}
                     onOpenUpload={() => setIsUploadModalOpen(true)}
+                    onDeleteSubmission={handleDeleteSubmission}
                     isBatchRunning={batchProgress.isProcessing}
                   />
                 )}

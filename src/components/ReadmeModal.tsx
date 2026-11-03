@@ -46,7 +46,7 @@ export const ReadmeModal: React.FC<ReadmeModalProps> = ({ isOpen, onClose }) => 
             </div>
             <div>
               <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-bold text-[#ae9a63] uppercase tracking-wider mb-0.5">
-                <span>Dozierenden-Handbuch · Version 1.9.0</span>
+                <span>Dozierenden-Handbuch · Version 1.9.4</span>
               </div>
               <h2 className="text-base sm:text-lg font-bold tracking-tight">
                 LTB-Auswerter Handbuch & Workflow-Leitfaden
@@ -252,7 +252,21 @@ export const ReadmeModal: React.FC<ReadmeModalProps> = ({ isOpen, onClose }) => 
                 
                 <div>
                   <span className="px-2 py-0.5 rounded-full bg-[#002f5d] text-white text-[10px] font-bold">
-                    v1.9.3 · Aktuell
+                    v1.9.4 · Aktuell
+                  </span>
+                  <h4 className="font-bold text-slate-900 text-sm mt-1">
+                    Löschfunktion für fehlerhafte Abgaben & ausgeschiedene Studierende
+                  </h4>
+                  <ul className="text-xs text-slate-600 list-disc list-inside mt-1 space-y-0.5">
+                    <li><strong>Gezielte Abgaben-Löschung</strong>: Einzelne Einreichungen können direkt in der Werkbank, der Einreichungsliste oder im Semester-Portfolio gelöscht werden (z. B. wenn eine Datei versehentlich im falschen Turnus hochgeladen wurde). Der Studierende und restliche Abgaben bleiben dabei erhalten.</li>
+                    <li><strong>Vollständige Seminar-Entfernung</strong>: Studierende können bei Seminarwechsel oder Fehlimport mit einem Klick vollständig aus dem Seminar-Roster und der Datenbank gelöscht werden.</li>
+                    <li><strong>Sicherheits-Bestätigungen</strong>: Konkrete Browser-Dialoge informieren vor dem Löschen transparent über die Reichweite der Aktion.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
+                    v1.9.3
                   </span>
                   <h4 className="font-bold text-slate-900 text-sm mt-1">
                     Nachzügler-Upload & LTB-Nachladen im laufenden Zyklus

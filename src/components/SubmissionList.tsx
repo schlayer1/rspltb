@@ -10,7 +10,8 @@ import {
   Sparkles,
   ShieldCheck,
   Tag,
-  PlusCircle
+  PlusCircle,
+  Trash2
 } from 'lucide-react';
 import { StudentSubmission } from '../types';
 
@@ -25,6 +26,7 @@ interface SubmissionListProps {
   onEvaluateSingle: (id: string) => void;
   onEvaluateSelected: () => void;
   onOpenUpload?: () => void;
+  onDeleteSubmission?: (id: string) => void;
   isProcessingId?: string;
   isBatchRunning?: boolean;
 }
@@ -40,6 +42,7 @@ export const SubmissionList: React.FC<SubmissionListProps> = ({
   onEvaluateSingle,
   onEvaluateSelected,
   onOpenUpload,
+  onDeleteSubmission,
   isProcessingId,
   isBatchRunning
 }) => {
@@ -261,6 +264,20 @@ export const SubmissionList: React.FC<SubmissionListProps> = ({
                       <Play className="w-3.5 h-3.5 fill-current text-amber-400" />
                     )}
                     Auswerten
+                  </button>
+                )}
+
+                {onDeleteSubmission && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteSubmission(sub.id);
+                    }}
+                    className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                    title={`Abgabe von "${sub.studentName}" löschen`}
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 )}
 

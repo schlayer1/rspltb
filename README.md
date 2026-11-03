@@ -139,7 +139,12 @@ Da alle Daten lokal im Browser gespeichert werden:
 
 ## 🛠️ Versions-Historie & Changelog
 
-### Version 1.9.3 (Aktuell)
+### Version 1.9.4 (Aktuell)
+* **Gezielte Abgaben-Löschung („Abgabe löschen“)**: Einzelne Lerntagebuch-Abgaben können bei Fehlimporten (z. B. versehentlich in den falschen Turnus hochgeladen) direkt gelöscht werden – wahlweise in der **Werkbank** (`SplitScreenWorkspace`), der **Einreichungsliste** (`SubmissionList`) oder im **Semester-Portfolio**. Die Studierendenakte und alle anderen LTB-Turnusse bleiben unverändert erhalten.
+* **Vollständiges Entfernen von Studierenden („Studierende/n entfernen“)**: Wechselt eine Studentin oder ein Student das Seminar oder wurde fälschlicherweise importiert, kann die Person mit einem Klick im **Semester-Portfolio** (oder per Schnellschaltfläche in der Werkbank) restlos aus dem Seminar-Roster und der lokalen Datenbank entfernt werden.
+* **Transparente Bestätigungsdialoge**: Ein nativer Dialog klärt vor der Ausführung über die Reichweite auf (ob nur die Einreichung oder das gesamte Profil mit allen LTB 1–6 gelöscht wird).
+
+### Version 1.9.3
 * **Nachzügler-Upload im laufenden Zyklus**: Prominente Schaltflächen `[ ➕ Abgabe nachladen ]` in der Werkbank-Leiste (**StatsBar**) und im Header (Desktop & Mobile) ermöglichen es, jederzeit Nachzügler-Dateien (.pdf, .docx, .txt), Moodle-Ordner oder aktualisierte Sammel-ZIPs nachzuholen.
 * **Neues Upload-Modal**: Leicht erreichbares Dialogfenster mit garantierter Beibehaltung und Schutz aller bereits erstellten Gutachten im aktiven Turnus.
 * **Textbasierte Namenserkennung bei Einzeldokumenten**: Auch Nachzügler-Dokumente ohne Moodle-Ordnerstruktur (z. B. `LTB2.pdf`) werden automatisch anhand ihres Namens und ihrer Matrikelnummer aus dem Text zugeordnet.
