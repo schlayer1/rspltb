@@ -9,7 +9,8 @@ import {
   Square, 
   Sparkles,
   ShieldCheck,
-  Tag
+  Tag,
+  PlusCircle
 } from 'lucide-react';
 import { StudentSubmission } from '../types';
 
@@ -23,6 +24,7 @@ interface SubmissionListProps {
   onSelect: (id: string) => void;
   onEvaluateSingle: (id: string) => void;
   onEvaluateSelected: () => void;
+  onOpenUpload?: () => void;
   isProcessingId?: string;
   isBatchRunning?: boolean;
 }
@@ -37,6 +39,7 @@ export const SubmissionList: React.FC<SubmissionListProps> = ({
   onSelect,
   onEvaluateSingle,
   onEvaluateSelected,
+  onOpenUpload,
   isProcessingId,
   isBatchRunning
 }) => {
@@ -54,8 +57,18 @@ export const SubmissionList: React.FC<SubmissionListProps> = ({
 
   if (submissions.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500">
-        Keine Einreichungen für diesen Turnus oder Filter vorhanden.
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500 space-y-3">
+        <p className="text-sm font-medium text-slate-600">Keine Einreichungen für diesen Filter vorhanden.</p>
+        {onOpenUpload && (
+          <button
+            type="button"
+            onClick={onOpenUpload}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#002f5d] hover:bg-[#002244] text-white shadow-xs transition-colors"
+          >
+            <PlusCircle className="w-3.5 h-3.5 text-[#ae9a63]" />
+            <span>Nachzügler-Abgabe nachladen</span>
+          </button>
+        )}
       </div>
     );
   }

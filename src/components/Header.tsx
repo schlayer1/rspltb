@@ -7,7 +7,8 @@ import {
   Database, 
   Upload, 
   Check, 
-  AlertCircle 
+  AlertCircle,
+  PlusCircle 
 } from 'lucide-react';
 import { StudentSubmission, MultiSemesterDatabase } from '../types';
 import { SemesterSelector } from './SemesterSelector';
@@ -20,6 +21,7 @@ interface HeaderProps {
   onCreateSemester?: (semesterId: string) => void;
   onOpenBackupModal?: () => void;
   onOpenReadme?: () => void;
+  onOpenUpload?: () => void;
   lastBackupTime?: number;
   onOpenSettings: () => void;
   onOpenExport: () => void;
@@ -38,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   onCreateSemester,
   onOpenBackupModal,
   onOpenReadme,
+  onOpenUpload,
   lastBackupTime,
   onOpenSettings,
   onOpenExport,
@@ -125,6 +128,19 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Toolbar Desktop */}
           <div className="flex items-center gap-2 flex-wrap self-end md:self-auto">
+            {/* LTB Abgaben nachladen / importieren Button */}
+            {onOpenUpload && (
+              <button
+                type="button"
+                onClick={onOpenUpload}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#002f5d] hover:bg-[#002244] text-white shadow-2xs transition-colors"
+                title="Nachzügler-Abgaben, Ordner oder Moodle-ZIP nachladen"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-[#ae9a63]" />
+                <span>Abgaben nachladen</span>
+              </button>
+            )}
+
             {/* Readme / Anleitung Button */}
             {onOpenReadme && (
               <button
@@ -292,6 +308,19 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Zeile 2: Horizontale Schnell-Aktionsleiste */}
           <div className="flex items-center justify-between gap-1.5 overflow-x-auto pb-0.5 pt-0.5 text-xs scrollbar-none">
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              {/* Abgaben nachladen Pill */}
+              {onOpenUpload && (
+                <button
+                  type="button"
+                  onClick={onOpenUpload}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#002f5d] text-white shrink-0 shadow-2xs"
+                  title="Nachzügler-Abgaben nachladen"
+                >
+                  <PlusCircle className="w-3.5 h-3.5 text-[#ae9a63]" />
+                  <span>+ Abgabe</span>
+                </button>
+              )}
+
               {/* Sichern Button */}
               {onOpenBackupModal && (
                 <button

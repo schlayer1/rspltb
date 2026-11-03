@@ -252,7 +252,22 @@ export const ReadmeModal: React.FC<ReadmeModalProps> = ({ isOpen, onClose }) => 
                 
                 <div>
                   <span className="px-2 py-0.5 rounded-full bg-[#002f5d] text-white text-[10px] font-bold">
-                    v1.9.2 · Aktuell
+                    v1.9.3 · Aktuell
+                  </span>
+                  <h4 className="font-bold text-slate-900 text-sm mt-1">
+                    Nachzügler-Upload & LTB-Nachladen im laufenden Zyklus
+                  </h4>
+                  <ul className="text-xs text-slate-600 list-disc list-inside mt-1 space-y-0.5">
+                    <li>Prominente Nachlade-Buttons (<code>➕ Abgabe nachladen</code>) in der Werkbank-Toolbar und im Header.</li>
+                    <li>Neues Upload-Modal mit 100 % Schutz bereits erstellter und freigegebener Gutachten.</li>
+                    <li>Unterstützt einzelne PDF/Word-Dateien, ganze Moodle-Ordner und Sammel-ZIPs.</li>
+                    <li>Automatische Namens- und Matrikelnummer-Erkennung direkt aus dem Dokumenten-Fließtext.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
+                    v1.9.2
                   </span>
                   <h4 className="font-bold text-slate-900 text-sm mt-1">
                     Intelligente Studierenden-Zusammenführung (LTB 1–6) & Auto-Deduplikation

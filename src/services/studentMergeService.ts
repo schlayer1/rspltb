@@ -59,6 +59,37 @@ export function extractMatrikelnummerFromText(rawText: string): string | undefin
 }
 
 /**
+ * Fallback parser: Extracts student name from document text when filename is generic (e.g. "LTB2.pdf").
+ * Scans standard title/header lines in academic reflection portfolios.
+ */
+export function extractStudentNameFromText(rawText: string): string | undefined {
+  if (!rawText) return undefined;
+  const firstLines = rawText.slice(0, 2000).split('\n').map(l => l.trim()).filter(Boolean);
+
+  for (const line of firstLines) {
+    // 1. "Name: Vorname Nachname" or "Autorin: Vorname Nachname"
+    const nameMatch = line.match(/(?:Name|Autor(?:in)?|Verfasser(?:in)?|Studierende[r]?)\s*[:.\s-]+\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,3})/i);
+    if (nameMatch && nameMatch[1]) {
+      return nameMatch[1].trim();
+    }
+
+    // 2. "Vorname Nachname - Matrikelnr..." or "Vorname Nachname / Lehramt..."
+    const matrLineMatch = line.match(/^([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,2})\s*[-–/]\s*(?:Matrikel|Matr|Lehramt|Gymnasium|Regelschule)/i);
+    if (matrLineMatch && matrLineMatch[1]) {
+      return matrLineMatch[1].trim();
+    }
+
+    // 3. "Ich, Vorname Nachname, absolviere..."
+    const ichMatch = line.match(/^Ich,\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,2}),/i);
+    if (ichMatch && ichMatch[1]) {
+      return ichMatch[1].trim();
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Finds an existing student profile in the database:
  * 1. Checks direct profile ID match
  * 2. Checks genuine Matrikelnummer match (5-8 digits)

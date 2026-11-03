@@ -3,7 +3,7 @@ import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import mammoth from 'mammoth';
 import { StudentSubmission, TurnusId } from '../types';
-import { extractMatrikelnummerFromText } from './studentMergeService';
+import { extractMatrikelnummerFromText, extractStudentNameFromText } from './studentMergeService';
 
 // Set up PDF.js worker via Vite's ?url asset loader
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -330,11 +330,19 @@ export async function parseFolderFileList(
       const textMatrikel = extractMatrikelnummerFromText(rawText);
       const effectiveMatrikel = textMatrikel || matrikelnummer;
 
+      // Check if studentName was generic (e.g. from single file "LTB2.pdf")
+      let effectiveStudentName = studentName;
+      const isGeneric = !studentName || studentName === 'Unbekannte/r Studierende/r' || studentName.length < 3 || /^(lerntagebuch|abgabe|ltb\d*|\d+)$/i.test(studentName);
+      if (isGeneric && rawText) {
+        const textName = extractStudentNameFromText(rawText);
+        if (textName) effectiveStudentName = textName;
+      }
+
       submissions.push({
         id: `sub_${effectiveMatrikel || Date.now()}_${detectedTurnus}_${counter}`,
         matrikelnummer: effectiveMatrikel,
         moodleId: matrikelnummer,
-        studentName,
+        studentName: effectiveStudentName,
         turnus: detectedTurnus,
         rawFileName: fileName,
         folderPath: relativePath,
@@ -466,11 +474,19 @@ export async function parseZipArchive(
       const textMatrikel = extractMatrikelnummerFromText(rawText);
       const effectiveMatrikel = textMatrikel || matrikelnummer;
 
+      // Check if studentName was generic (e.g. from single file "LTB2.pdf")
+      let effectiveStudentName = studentName;
+      const isGeneric = !studentName || studentName === 'Unbekannte/r Studierende/r' || studentName.length < 3 || /^(lerntagebuch|abgabe|ltb\d*|\d+)$/i.test(studentName);
+      if (isGeneric && rawText) {
+        const textName = extractStudentNameFromText(rawText);
+        if (textName) effectiveStudentName = textName;
+      }
+
       submissions.push({
         id: `sub_${effectiveMatrikel || Date.now()}_${detectedTurnus}_${counter}`,
         matrikelnummer: effectiveMatrikel,
         moodleId: matrikelnummer,
-        studentName,
+        studentName: effectiveStudentName,
         turnus: detectedTurnus,
         rawFileName: fileName,
         folderPath: path,

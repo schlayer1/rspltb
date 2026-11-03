@@ -338,12 +338,19 @@ export const SemesterPortfolioView: React.FC<SemesterPortfolioViewProps> = ({
                             )}
                           </div>
 
-                          {sub && (
+                          {sub ? (
                             <button
                               onClick={() => onJumpToSubmission(selectedStudent.id, t)}
                               className="text-xs text-blue-900 hover:text-blue-950 font-semibold inline-flex items-center gap-1 hover:underline"
                             >
                               Im Arbeitsplatz öffnen <ArrowRight className="w-3 h-3" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => onJumpToSubmission(selectedStudent.id, t)}
+                              className="text-xs text-[#002f5d] hover:text-[#001f3f] font-semibold inline-flex items-center gap-1 hover:underline"
+                            >
+                              Zu {t.toUpperCase()} wechseln & nachladen <ArrowRight className="w-3 h-3" />
                             </button>
                           )}
                         </div>

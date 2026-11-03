@@ -139,7 +139,12 @@ Da alle Daten lokal im Browser gespeichert werden:
 
 ## 🛠️ Versions-Historie & Changelog
 
-### Version 1.9.2 (Aktuell)
+### Version 1.9.3 (Aktuell)
+* **Nachzügler-Upload im laufenden Zyklus**: Prominente Schaltflächen `[ ➕ Abgabe nachladen ]` in der Werkbank-Leiste (**StatsBar**) und im Header (Desktop & Mobile) ermöglichen es, jederzeit Nachzügler-Dateien (.pdf, .docx, .txt), Moodle-Ordner oder aktualisierte Sammel-ZIPs nachzuholen.
+* **Neues Upload-Modal**: Leicht erreichbares Dialogfenster mit garantierter Beibehaltung und Schutz aller bereits erstellten Gutachten im aktiven Turnus.
+* **Textbasierte Namenserkennung bei Einzeldokumenten**: Auch Nachzügler-Dokumente ohne Moodle-Ordnerstruktur (z. B. `LTB2.pdf`) werden automatisch anhand ihres Namens und ihrer Matrikelnummer aus dem Text zugeordnet.
+
+### Version 1.9.2
 * **Intelligente Studierenden-Zusammenführung (LTB 1–6)**: Vollständige Entkopplung von wechselnden Moodle-Assignment-IDs im Ordnernamen. Studierende werden turnusübergreifend an ihrem normalisierten Namen (inkl. Namensdrehern *„Nachname, Vorname“*) und ihrer echten Universitäts-Matrikelnummer aus dem Text erkannt.
 * **Automatische Datenbank-Heilung & Deduplikation**: Bereits doppelt angelegte Studierende (z. B. durch getrennten Import von LTB 1 und LTB 2) werden beim Laden der App automatisch und verlustfrei zu einer einzigen Akte verschmolzen.
 * **Universitäts-Matrikelnummern-Parser**: Automatische Erkennung 5–8-stelliger Matrikelnummern direkt aus dem Fließtext der Lerntagebücher.

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, CheckCircle, Clock, Sparkles, AlertTriangle, CheckSquare } from 'lucide-react';
+import { Search, CheckCircle, Clock, Sparkles, AlertTriangle, CheckSquare, PlusCircle } from 'lucide-react';
 import { StudentSubmission } from '../types';
 
 interface StatsBarProps {
@@ -8,6 +8,7 @@ interface StatsBarProps {
   onFilterChange: (filter: 'all' | 'pending' | 'completed' | 'approved' | 'error') => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  onOpenUpload?: () => void;
 }
 
 export const StatsBar: React.FC<StatsBarProps> = ({
@@ -15,7 +16,8 @@ export const StatsBar: React.FC<StatsBarProps> = ({
   currentFilter,
   onFilterChange,
   searchQuery,
-  onSearchChange
+  onSearchChange,
+  onOpenUpload
 }) => {
   const total = submissions.length;
   const pending = submissions.filter(s => s.status === 'pending').length;
@@ -87,16 +89,32 @@ export const StatsBar: React.FC<StatsBarProps> = ({
           )}
         </div>
 
-        {/* Search Input */}
-        <div className="relative min-w-[220px]">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Studierende/r suchen..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-          />
+        <div className="flex items-center gap-2">
+          {/* Search Input */}
+          <div className="relative min-w-[180px] sm:min-w-[220px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Studierende/r suchen..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+            />
+          </div>
+
+          {/* Nachzügler / Abgabe nachladen Button */}
+          {onOpenUpload && (
+            <button
+              type="button"
+              onClick={onOpenUpload}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#002f5d] hover:bg-[#002244] text-white shadow-2xs transition-all shrink-0"
+              title="Nachzüglerin oder weitere Moodle-Abgaben (.pdf, .docx, .zip) nachladen"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-[#ae9a63]" />
+              <span className="hidden sm:inline">Abgabe nachladen</span>
+              <span className="sm:hidden">+ Nachzügler</span>
+            </button>
+          )}
         </div>
 
       </div>

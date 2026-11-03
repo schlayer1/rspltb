@@ -13,6 +13,7 @@ import { BeratungsrundeDashboard } from './components/BeratungsrundeDashboard';
 import { SemesterPortfolioView } from './components/SemesterPortfolioView';
 import { BackupReminderModal } from './components/BackupReminderModal';
 import { ReadmeModal } from './components/ReadmeModal';
+import { UploadModal } from './components/UploadModal';
 import { 
   StudentSubmission, 
   EvaluationSettings, 
@@ -108,6 +109,7 @@ export const App: React.FC = () => {
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState('');
   const [uncertainUploadData, setUncertainUploadData] = useState<{
@@ -750,6 +752,7 @@ export const App: React.FC = () => {
         onCreateSemester={handleCreateSemester}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
         onOpenReadme={() => setIsReadmeOpen(true)}
+        onOpenUpload={() => setIsUploadModalOpen(true)}
         lastBackupTime={lastBackupTime}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
@@ -853,6 +856,7 @@ export const App: React.FC = () => {
                   onFilterChange={setFilter}
                   searchQuery={searchQuery}
                   onSearchChange={setSearchQuery}
+                  onOpenUpload={() => setIsUploadModalOpen(true)}
                 />
 
                 {/* Split-Screen Workspace */}
@@ -893,6 +897,7 @@ export const App: React.FC = () => {
                         onSelect={setSelectedId}
                         onEvaluateSingle={handleEvaluateSingle}
                         onEvaluateSelected={handleStartBatchSelected}
+                        onOpenUpload={() => setIsUploadModalOpen(true)}
                         isBatchRunning={batchProgress.isProcessing}
                       />
                     </div>
@@ -908,6 +913,7 @@ export const App: React.FC = () => {
                     onSelect={setSelectedId}
                     onEvaluateSingle={handleEvaluateSingle}
                     onEvaluateSelected={handleStartBatchSelected}
+                    onOpenUpload={() => setIsUploadModalOpen(true)}
                     isBatchRunning={batchProgress.isProcessing}
                   />
                 )}
@@ -968,6 +974,19 @@ export const App: React.FC = () => {
       <ReadmeModal
         isOpen={isReadmeOpen}
         onClose={() => setIsReadmeOpen(false)}
+      />
+
+      {/* Nachzügler / Abgabe nachladen Modal */}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        activeTurnus={activeTurnus}
+        onFilesSelected={(items) => {
+          setIsUploadModalOpen(false);
+          handleFilesSelected(items);
+        }}
+        isLoading={isUploading}
+        progressText={uploadProgressText}
       />
 
     </div>
