@@ -50,7 +50,7 @@ import { Sparkles, Layers, ShieldCheck, CheckCircle2, ArrowRight, Archive } from
 
 const DEFAULT_SETTINGS: EvaluationSettings = {
   apiKey: localStorage.getItem('rsp_gemini_api_key') || '',
-  selectedModel: 'gemini-flash-lite-latest',
+  selectedModel: 'gemini-4-hydrogen',
   lecturerName: 'Tim',
   basePrompt: `Du bist Dozent an einer Universität und leitest ein Seminar zur Schulwirklichkeit. Deine Studenten sollen dir Lerntagebücher zu ihren Erfahrungen aus dem Schulalltag abgeben. Gib eine differenzierte, wertschätzende und motivierende Rückmeldung ohne zu übertreiben zu folgendem Text in maximal 10 Sätzen. Ihr duzt euch. Benutze Haupt- und Nebensätze für einen organischen Stil. Beziehe dich dabei intensiv auf die Inhalte des folgenden Textes. Beende den Text mit: Viele Grüße sendet Dir Tim`,
   antiAiMode: true,

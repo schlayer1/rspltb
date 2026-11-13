@@ -2,12 +2,12 @@ import { EvaluationSettings, ProblemCluster, StudentProfile } from '../types';
 import { enforceSalutation } from './nameSalutationService';
 
 export const CANDIDATE_FLASH_MODELS = [
+  'gemini-4-hydrogen',
   'gemini-flash-lite-latest',
-  'gemini-3-flash-preview',
-  'gemini-flash-latest',
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
   'gemini-3.6-flash',
-  'gemini-3.7-flash',
-  'gemini-3.8-flash'
+  'gemini-flash-latest'
 ];
 
 export const decodeDefaultKey = (): string => {
@@ -94,7 +94,7 @@ export async function checkGeminiApiHealth(apiKey?: string): Promise<{ ok: boole
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: 'Ping' }] }],
-        generationConfig: { maxOutputTokens: 10, temperature: 0.1 }
+        generationConfig: { maxOutputTokens: 1024, temperature: 0.1 }
       })
     });
 
