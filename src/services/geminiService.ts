@@ -10,24 +10,13 @@ export const CANDIDATE_FLASH_MODELS = [
   'gemini-flash-latest'
 ];
 
-export const decodeDefaultKey = (): string => {
-  try {
-    const b64 = 'QVEuQWI4Uk42S2VKMmFhOEp6NWU2S0hjaTI1NjdTeGlLSmIzenVrQXprbXpuWG1Td2QzdXc=';
-    if (typeof atob !== 'undefined') return atob(b64);
-    if (typeof Buffer !== 'undefined') return Buffer.from(b64, 'base64').toString('utf8');
-  } catch {}
-  return '';
-};
-
-export const DEFAULT_SCHOOL_GEMINI_KEY = decodeDefaultKey();
-
 export function getActiveApiKey(customKey?: string): string {
   if (customKey && customKey.trim().length > 5) return customKey.trim();
-  const local = localStorage.getItem('rsp_gemini_api_key');
-  if (local && local.trim().length > 5) return local.trim();
-  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (envKey && envKey.trim().length > 5) return envKey.trim();
-  return DEFAULT_SCHOOL_GEMINI_KEY;
+  if (typeof window !== 'undefined') {
+    const local = localStorage.getItem('rsp_gemini_api_key');
+    if (local && local.trim().length > 5) return local.trim();
+  }
+  return '';
 }
 
 // 6 rotierende Einstiegsperspektiven für maximale Vielfalt untereinander
@@ -75,38 +64,130 @@ export const ANTI_AI_BLACKLIST = [
 
 let cachedWorkingModel = CANDIDATE_FLASH_MODELS[0];
 
+async function callGeminiViaProxy(params: {
+  customKey?: string;
+  prompt: string;
+  model?: string;
+  temperature?: number;
+  topP?: number;
+  maxOutputTokens?: number;
+}): Promise<{ text: string; modelUsed: string }> {
+  const customKey = getActiveApiKey(params.customKey);
+
+  // 1. Primärer Pfad: Sicherer Serverless-Proxy (/api/gemini)
+  try {
+    const proxyRes = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: customKey || 'serverless-proxy',
+        userPrompt: params.prompt,
+        model: params.model || cachedWorkingModel || 'auto',
+        temperature: params.temperature ?? 0.7,
+        topP: params.topP ?? 0.95,
+        maxOutputTokens: params.maxOutputTokens ?? 8192,
+      }),
+    });
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data?.text) {
+        const usedModel = data.model || cachedWorkingModel || CANDIDATE_FLASH_MODELS[0];
+        cachedWorkingModel = usedModel;
+        return { text: data.text, modelUsed: usedModel };
+      }
+    }
+
+    if (proxyRes.status !== 404) {
+      const errData = await proxyRes.json().catch(() => ({}));
+      throw new Error(errData?.error || `HTTP ${proxyRes.status} vom Gemini-Proxy`);
+    }
+  } catch (proxyErr: any) {
+    if (proxyErr?.message && !proxyErr.message.includes('404')) {
+      throw proxyErr;
+    }
+  }
+
+  // 2. Fallback bei 404 nur mit persönlichem Key
+  if (!customKey) {
+    throw new Error('Der Gemini-Server-Proxy (/api/gemini) ist nicht erreichbar.');
+  }
+
+  const modelsToTry = [
+    cachedWorkingModel,
+    ...CANDIDATE_FLASH_MODELS.filter((m) => m !== cachedWorkingModel),
+  ];
+
+  let lastError = 'Unbekannter Fehler';
+  for (const model of modelsToTry) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(customKey)}`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: params.prompt }] }],
+          generationConfig: {
+            temperature: params.temperature ?? 0.7,
+            topP: params.topP ?? 0.95,
+            maxOutputTokens: params.maxOutputTokens ?? 8192,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const candidate = data.candidates?.[0];
+        if (candidate?.finishReason === 'MAX_TOKENS') {
+          lastError = `Modell ${model} hat Tokenlimit erreicht (finishReason: MAX_TOKENS)`;
+          continue;
+        }
+        const parts = candidate?.content?.parts || [];
+        const text = parts.map((p: any) => p.text || '').join('').trim();
+        if (text) {
+          cachedWorkingModel = model;
+          return { text, modelUsed: model };
+        }
+      } else {
+        const errJson = await response.json().catch(() => null);
+        lastError = `Modell ${model} [${response.status}]: ${errJson?.error?.message || response.statusText}`;
+      }
+    } catch (err: any) {
+      lastError = `Netzwerkfehler bei ${model}: ${err.message || String(err)}`;
+    }
+  }
+
+  throw new Error(`Alle Gemini-Flash-Modelle schlugen fehl. Letzte Meldung: ${lastError}`);
+}
+
 /**
  * Health check for the Gemini API connection
  */
 export async function checkGeminiApiHealth(apiKey?: string): Promise<{ ok: boolean; model: string; message: string; latencyMs: number }> {
-  const activeKey = getActiveApiKey(apiKey);
-  if (!activeKey) {
-    return { ok: false, model: '', message: 'Kein API-Key vorhanden', latencyMs: 0 };
-  }
-
   const startTime = Date.now();
   const model = cachedWorkingModel || CANDIDATE_FLASH_MODELS[0];
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: 'Ping' }] }],
-        generationConfig: { maxOutputTokens: 1024, temperature: 0.1 }
-      })
+    const res = await callGeminiViaProxy({
+      customKey: apiKey,
+      prompt: 'Ping',
+      model,
+      temperature: 0.1,
+      maxOutputTokens: 128,
     });
-
-    const latencyMs = Date.now() - startTime;
-    if (response.ok) {
-      return { ok: true, model, message: 'Verbunden & Einsatzbereit', latencyMs };
-    } else {
-      const err = await response.json().catch(() => ({}));
-      return { ok: false, model, message: err?.error?.message || response.statusText, latencyMs };
-    }
+    return {
+      ok: true,
+      model: res.modelUsed,
+      message: 'Verbunden & Einsatzbereit',
+      latencyMs: Date.now() - startTime,
+    };
   } catch (err: any) {
-    return { ok: false, model, message: err.message || 'Netzwerkfehler', latencyMs: Date.now() - startTime };
+    return {
+      ok: false,
+      model,
+      message: err?.message || 'Netzwerkfehler',
+      latencyMs: Date.now() - startTime,
+    };
   }
 }
 
@@ -177,11 +258,6 @@ export async function evaluateSubmissionText(
   problemCluster?: ProblemCluster;
   usedModel: string;
 }> {
-  const activeKey = getActiveApiKey(settings.apiKey);
-  if (!activeKey) {
-    throw new Error('Kein Gemini API-Schlüssel gefunden. Bitte in den Einstellungen hinterlegen.');
-  }
-
   const angle = DIVERSITY_ANGLES[angleIndex % DIVERSITY_ANGLES.length];
 
   if (onStep) {
@@ -235,78 +311,36 @@ export async function evaluateSubmissionText(
 
   const fullPrompt = promptLines.join('\n');
 
-  // Cascade through verified candidate models
-  const modelsToTry = [
-    cachedWorkingModel,
-    ...CANDIDATE_FLASH_MODELS.filter(m => m !== cachedWorkingModel)
-  ];
-
-  let lastError = 'Unbekannter Fehler';
-
-  for (const model of modelsToTry) {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
-
-    if (onStep) {
-      onStep(`Übermittle an Gemini (${model})...`);
-    }
-
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            topP: 0.95,
-            maxOutputTokens: 8192 // 8192 tokens avoids truncation with reasoning models
-          }
-        })
-      });
-
-      if (response.ok) {
-        if (onStep) {
-          onStep('Dozenten-Feedback, Abstract & Problemfeld wird analysiert...');
-        }
-
-        const data = await response.json();
-        const candidate = data.candidates?.[0];
-        
-        if (candidate?.finishReason === 'MAX_TOKENS') {
-          lastError = `Modell ${model} hat Tokenlimit erreicht (finishReason: MAX_TOKENS)`;
-          continue;
-        }
-
-        const parts = candidate?.content?.parts || [];
-        const text = parts.map((p: any) => p.text || '').join('').trim();
-
-        if (text && text.length > 20) {
-          cachedWorkingModel = model;
-          if (onStep) {
-            onStep('Prüfe Anti-KI Kriterien & Signatur...');
-          }
-
-          const { cleanFeedback, abstract, suggestedFocus, problemCluster } = extractStructuredSections(text);
-
-          return {
-            feedback: cleanFeedback,
-            abstract,
-            suggestedFocus,
-            problemCluster,
-            usedModel: model
-          };
-        }
-      } else {
-        const errJson = await response.json().catch(() => null);
-        const errMsg = errJson?.error?.message || response.statusText;
-        lastError = `Modell ${model} [${response.status}]: ${errMsg}`;
-      }
-    } catch (err: any) {
-      lastError = `Netzwerkfehler bei ${model}: ${err.message || String(err)}`;
-    }
+  if (onStep) {
+    onStep('Übermittle an Gemini-Proxy...');
   }
 
-  throw new Error(`Alle Gemini-Flash-Modelle schlugen fehl. Letzte Meldung: ${lastError}`);
+  const { text, modelUsed } = await callGeminiViaProxy({
+    customKey: settings.apiKey,
+    prompt: fullPrompt,
+    model: settings.selectedModel,
+    temperature: 0.7,
+    topP: 0.95,
+    maxOutputTokens: 8192,
+  });
+
+  if (text && text.length > 20) {
+    if (onStep) {
+      onStep('Prüfe Anti-KI Kriterien & Signatur...');
+    }
+
+    const { cleanFeedback, abstract, suggestedFocus, problemCluster } = extractStructuredSections(text);
+
+    return {
+      feedback: cleanFeedback,
+      abstract,
+      suggestedFocus,
+      problemCluster,
+      usedModel: modelUsed,
+    };
+  }
+
+  throw new Error('Antwort von Gemini war zu kurz oder leer.');
 }
 
 /**
@@ -318,11 +352,6 @@ export async function generateSemesterSummaryFeedback(
   settings: EvaluationSettings,
   onStep?: (step: string) => void
 ): Promise<string> {
-  const activeKey = getActiveApiKey(settings.apiKey);
-  if (!activeKey) {
-    throw new Error('Kein Gemini API-Schlüssel gefunden. Bitte in den Einstellungen hinterlegen.');
-  }
-
   if (onStep) onStep(`Führe alle Feedbacks von ${student.fullName} zusammen...`);
 
   const turnusEntries = Object.entries(student.submissions) as [string, any][];
@@ -364,36 +393,16 @@ STIL & REGELN:
 - KEINE hohlen KI-Phrasen ("Es ist beachtlich", "Du legst ein solides Fundament", etc.).
 - Beende den gesamten Text zwingend mit: "Viele Grüße sendet Dir Tim"`;
 
-  const model = cachedWorkingModel || CANDIDATE_FLASH_MODELS[0];
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
-
   if (onStep) onStep('Generiere Semester-Portfolio Synthese mit Gemini...');
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.95,
-        maxOutputTokens: 8192
-      }
-    })
+  const { text } = await callGeminiViaProxy({
+    customKey: settings.apiKey,
+    prompt,
+    model: settings.selectedModel,
+    temperature: 0.7,
+    topP: 0.95,
+    maxOutputTokens: 8192,
   });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || 'Fehler bei der Gesamtfeedback-Generierung');
-  }
-
-  const data = await response.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const text = parts.map((p: any) => p.text || '').join('').trim();
-
-  if (!text) {
-    throw new Error('Keine Antwort von Gemini erhalten.');
-  }
 
   return enforceSalutation(text, student.fullName, settings.signOff, student.gender);
 }

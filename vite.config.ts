@@ -1,10 +1,66 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import geminiHandler from './api/gemini';
+
+function geminiLocalProxyPlugin(): Plugin {
+  const attach = (server: any) => {
+    server.middlewares.use('/api/gemini', async (req: any, res: any) => {
+      try {
+        let rawBody = '';
+        for await (const chunk of req) {
+          rawBody += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+        }
+        let body: any = {};
+        if (rawBody) {
+          try {
+            body = JSON.parse(rawBody);
+          } catch {
+            body = rawBody;
+          }
+        }
+        const mockReq = { method: req.method, headers: req.headers, body };
+        const mockRes = {
+          setHeader: (k: string, v: string) => res.setHeader(k, v),
+          status: (code: number) => {
+            res.statusCode = code;
+            return {
+              json: (data: any) => {
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(data));
+              },
+              end: () => res.end(),
+            };
+          },
+        };
+        await geminiHandler(mockReq, mockRes);
+      } catch (err: any) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: err?.message || 'Server error' }));
+      }
+    });
+  };
+
+  return {
+    name: 'gemini-local-proxy',
+    configureServer: attach,
+    configurePreviewServer: attach,
+  };
+}
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  optimizeDeps: {
-    include: ['pdfjs-dist', 'mammoth', 'jszip']
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  for (const [k, v] of Object.entries(env)) {
+    if (process.env[k] === undefined) {
+      process.env[k] = v;
+    }
   }
+
+  return {
+    plugins: [react(), geminiLocalProxyPlugin()],
+    optimizeDeps: {
+      include: ['pdfjs-dist', 'mammoth', 'jszip'],
+    },
+  };
 });

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Key, Sliders, ShieldCheck, Sparkles, HelpCircle, RotateCcw, Check } from 'lucide-react';
 import { EvaluationSettings } from '../types';
-import { CANDIDATE_FLASH_MODELS, decodeDefaultKey } from '../services/geminiService';
+import { CANDIDATE_FLASH_MODELS } from '../services/geminiService';
 
 interface SettingsModalProps {
   isOpen: boolean;
